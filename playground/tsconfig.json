@@ -22,6 +22,10 @@
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "../packages/core/" },
-    { "path": "../packages/react/" }
+    { "path": "../packages/react/" },
+    { "path": "../packages/shadcn/" },
+    { "path": "../packages/xl-pdf-exporter/" },
+    { "path": "../packages/xl-docx-exporter/" },
+    { "path": "../packages/xl-multi-column/" }
   ]
 }

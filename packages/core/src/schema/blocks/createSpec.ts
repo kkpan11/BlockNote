@@ -1,20 +1,22 @@
-import { ParseRule } from "@tiptap/pm/model";
-import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
-import { InlineContentSchema } from "../inlineContent/types";
-import { StyleSchema } from "../styles/types";
+import { Editor } from "@tiptap/core";
+import { TagParseRule } from "@tiptap/pm/model";
+import { NodeView } from "@tiptap/pm/view";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
+import { InlineContentSchema } from "../inlineContent/types.js";
+import { StyleSchema } from "../styles/types.js";
 import {
   createInternalBlockSpec,
   createStronglyTypedTiptapNode,
   getBlockFromPos,
   propsToAttributes,
   wrapInBlockStructure,
-} from "./internal";
+} from "./internal.js";
 import {
   BlockConfig,
   BlockFromConfig,
   BlockSchemaWithBlock,
   PartialBlockFromConfig,
-} from "./types";
+} from "./types.js";
 
 // restrict content to "inline" and "none" only
 export type CustomBlockConfig = BlockConfig & {
@@ -61,6 +63,23 @@ export type CustomBlockImplementation<
   ) => PartialBlockFromConfig<T, I, S>["props"] | undefined;
 };
 
+// Function that causes events within non-selectable blocks to be handled by the
+// browser instead of the editor.
+export function applyNonSelectableBlockFix(nodeView: NodeView, editor: Editor) {
+  nodeView.stopEvent = (event) => {
+    // Blurs the editor on mouse down as the block is non-selectable. This is
+    // mainly done to prevent UI elements like the formatting toolbar from being
+    // visible while content within a non-selectable block is selected.
+    if (event.type === "mousedown") {
+      setTimeout(() => {
+        editor.view.dom.blur();
+      }, 10);
+    }
+
+    return true;
+  };
+}
+
 // Function that uses the 'parse' function of a blockConfig to create a
 // TipTap node's `parseHTML` property. This is only used for parsing content
 // from the clipboard.
@@ -68,7 +87,7 @@ export function getParseRules(
   config: BlockConfig,
   customParseFunction: CustomBlockImplementation<any, any, any>["parse"]
 ) {
-  const rules: ParseRule[] = [
+  const rules: TagParseRule[] = [
     {
       tag: "[data-content-type=" + config.type + "]",
       contentElement: "[data-editable]",
@@ -118,15 +137,18 @@ export function createBlockSpec<
   T extends CustomBlockConfig,
   I extends InlineContentSchema,
   S extends StyleSchema
->(blockConfig: T, blockImplementation: CustomBlockImplementation<T, I, S>) {
+>(
+  blockConfig: T,
+  blockImplementation: CustomBlockImplementation<NoInfer<T>, I, S>
+) {
   const node = createStronglyTypedTiptapNode({
     name: blockConfig.type as T["type"],
     content: (blockConfig.content === "inline"
       ? "inline*"
       : "") as T["content"] extends "inline" ? "inline*" : "",
     group: "blockContent",
-    selectable: true,
-
+    selectable: blockConfig.isSelectable ?? true,
+    isolating: true,
     addAttributes() {
       return propsToAttributes(blockConfig.propSchema);
     },
@@ -135,15 +157,24 @@ export function createBlockSpec<
       return getParseRules(blockConfig, blockImplementation.parse);
     },
 
-    renderHTML() {
-      // renderHTML is not really used, as we always use a nodeView, and we use toExternalHTML / toInternalHTML for serialization
-      // There's an edge case when this gets called nevertheless; before the nodeviews have been mounted
-      // this is why we implement it with a temporary placeholder
+    renderHTML({ HTMLAttributes }) {
+      // renderHTML is used for copy/pasting content from the editor back into
+      // the editor, so we need to make sure the `blockContent` element is
+      // structured correctly as this is what's used for parsing blocks. We
+      // just render a placeholder div inside as the `blockContent` element
+      // already has all the information needed for proper parsing.
       const div = document.createElement("div");
-      div.setAttribute("data-tmp-placeholder", "true");
-      return {
-        dom: div,
-      };
+      return wrapInBlockStructure(
+        {
+          dom: div,
+          contentDOM: blockConfig.content === "inline" ? div : undefined,
+        },
+        blockConfig.type,
+        {},
+        blockConfig.propSchema,
+        blockConfig.isFileBlock,
+        HTMLAttributes
+      );
     },
 
     addNodeView() {
@@ -163,13 +194,19 @@ export function createBlockSpec<
 
         const output = blockImplementation.render(block as any, editor);
 
-        return wrapInBlockStructure(
+        const nodeView: NodeView = wrapInBlockStructure(
           output,
           block.type,
           block.props,
           blockConfig.propSchema,
           blockContentDOMAttributes
         );
+
+        if (blockConfig.isSelectable === false) {
+          applyNonSelectableBlockFix(nodeView, this.editor);
+        }
+
+        return nodeView;
       };
     },
   });
@@ -193,9 +230,12 @@ export function createBlockSpec<
         block.type,
         block.props,
         blockConfig.propSchema,
+        blockConfig.isFileBlock,
         blockContentDOMAttributes
       );
     },
+    // TODO: this should not have wrapInBlockStructure and generally be a lot simpler
+    // post-processing in externalHTMLExporter should not be necessary
     toExternalHTML: (block, editor) => {
       const blockContentDOMAttributes =
         node.options.domAttributes?.blockContent || {};
@@ -207,7 +247,6 @@ export function createBlockSpec<
       if (output === undefined) {
         output = blockImplementation.render(block as any, editor as any);
       }
-
       return wrapInBlockStructure(
         output,
         block.type,

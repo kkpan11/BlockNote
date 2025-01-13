@@ -1,21 +1,18 @@
+import * as pmView from "prosemirror-view";
 import { describe, expect, it } from "vitest";
-import { BlockNoteEditor } from "../../..";
-import { nestedListsToBlockNoteStructure } from "./util/nestedLists";
+import { BlockNoteEditor } from "../../../index.js";
+import { nestedListsToBlockNoteStructure } from "./util/nestedLists.js";
 
 async function parseHTMLAndCompareSnapshots(
   html: string,
   snapshotName: string
 ) {
-  // use a dynamic import because we want to access
-  // __parseFromClipboard which is not exposed in types
-  const view: any = await import("prosemirror-view");
-
   const editor = BlockNoteEditor.create();
   const div = document.createElement("div");
   editor.mount(div);
   const blocks = await editor.tryParseHTMLToBlocks(html);
 
-  const snapshotPath = "./__snapshots__/paste/" + snapshotName + ".json";
+  const snapshotPath = "./__snapshots__/" + snapshotName + ".json";
   expect(JSON.stringify(blocks, undefined, 2)).toMatchFileSnapshot(
     snapshotPath
   );
@@ -33,16 +30,15 @@ async function parseHTMLAndCompareSnapshots(
 
   (window as any).__TEST_OPTIONS.mockID = 0; // reset id counter
   const htmlNode = nestedListsToBlockNoteStructure(html);
-  const tt = editor._tiptapEditor;
 
-  const slice = view.__parseFromClipboard(
-    tt.view,
+  const slice = (pmView as any).__parseFromClipboard(
+    editor.prosemirrorView,
     "",
     htmlNode.innerHTML,
     false,
-    tt.view.state.selection.$from
+    editor._tiptapEditor.state.selection.$from
   );
-  tt.view.dispatch(tt.view.state.tr.replaceSelection(slice));
+  editor.dispatch(editor._tiptapEditor.state.tr.replaceSelection(slice));
 
   // alternative paste simulation doesn't work in a non-browser vitest env
   //   editor._tiptapEditor.view.pasteHTML(html, {
@@ -76,88 +72,147 @@ describe("Parse HTML", () => {
 
   it("list test", async () => {
     const html = `<ul>
-   <li>First</li>
-   <li>Second</li>
-   <li>Third</li>
-   <li>Five Parent
-   <ul>
-   <li>Child 1</li>
-   <li>Child 2</li>
-   </ul>
-   </li>
-   </ul>`;
+    <li>First</li>
+    <li>Second</li>
+    <li>Third</li>
+    <li>
+      <input type="checkbox">
+      Fourth
+    </li>
+    <li>
+      <input type="checkbox">
+      Fifth
+    </li>
+    <li>Five Parent
+      <ul>
+        <li>Child 1</li>
+        <li>Child 2</li>
+        <li>
+          <input type="checkbox">
+          Child 3
+        </li>
+        <li>
+          <input type="checkbox">
+          Child 4
+        </li>
+      </ul>
+    </li>
+  </ul>`;
     await parseHTMLAndCompareSnapshots(html, "list-test");
   });
 
   it("Parse nested lists", async () => {
     const html = `<ul>
     <li>Bullet List Item</li>
-      <li>Bullet List Item</li>
-        <ul>
-           <li>
-              Nested Bullet List Item
-           </li>
-           <li>
-              Nested Bullet List Item
-           </li>
-        </ul>
-     <li>
-        Bullet List Item
-     </li>
+    <li>Bullet List Item
+      <ul>
+        <li>Nested Bullet List Item</li>
+        <li>Nested Bullet List Item</li>
+      </ul>
+    </li>
+    <li>Bullet List Item</li>
   </ul>
   <ol>
-     <li>
-        Numbered List Item
-        <ol>
-           <li>
-              Nested Numbered List Item
-           </li>
-           <li>
-              Nested Numbered List Item
-           </li>
-        </ol>
-     </li>
-     <li>
-        Numbered List Item
-     </li>
-  </ol>`;
+    <li>Numbered List Item</li>
+    <li>Numbered List Item
+      <ol>
+        <li>Nested Numbered List Item</li>
+        <li>Nested Numbered List Item</li>
+      </ol>
+    </li>
+    <li>Numbered List Item</li>
+  </ol>
+  <ul>
+    <li>
+      <input type="checkbox">
+      Check List Item
+    </li>
+    <li>
+      <input type="checkbox">
+      Check List Item
+      <ul>
+        <li>
+          <input type="checkbox">
+          Nested Check List Item
+        </li>
+        <li>
+          <input type="checkbox">
+          Nested Check List Item
+        </li>
+      </ul>
+    </li>
+    <li>
+      <input type="checkbox">
+      Nested Check List Item
+    </li>
+  </ul>`;
 
     await parseHTMLAndCompareSnapshots(html, "parse-nested-lists");
   });
 
   it("Parse nested lists with paragraphs", async () => {
     const html = `<ul>
-     <li>
-        <p>Bullet List Item</p>
-        <ul>
-           <li>
-              <p>Nested Bullet List Item</p>
-           </li>
-           <li>
-              <p>Nested Bullet List Item</p>
-           </li>
-        </ul>
-     </li>
-     <li>
-        <p>Bullet List Item</p>
-     </li>
+    <li>
+      <p>Bullet List Item</p>
+    </li>
+    <li>
+      <p>Bullet List Item</p>
+      <ul>
+        <li>
+          <p>Nested Bullet List Item</p>
+        </li>
+        <li>
+          <p>Nested Bullet List Item</p>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <p>Bullet List Item</p>
+    </li>
   </ul>
   <ol>
-     <li>
-        <p>Numbered List Item</p>
-        <ol>
-           <li>
-              <p>Nested Numbered List Item</p>
-           </li>
-           <li>
-              <p>Nested Numbered List Item</p>
-           </li>
-        </ol>
-     </li>
-     <li>
-        <p>Numbered List Item</p>
-     </li>
-  </ol>`;
+    <li>
+      <p>Numbered List Item</p>
+    </li>
+    <li>
+      <p>Numbered List Item</p>
+      <ol>
+        <li>
+          <p>Nested Numbered List Item</p>
+        </li>
+        <li>
+          <p>Nested Numbered List Item</p>
+        </li>
+      </ol>
+    </li>
+    <li>
+      <p>Numbered List Item</p>
+    </li>
+  </ol>
+  <ul>
+    <li>
+      <input type="checkbox">
+      <p>Checked List Item</p>
+    </li>
+    <li>
+      <input type="checkbox">
+      <p>Checked List Item</p>
+      <ul>
+        <li>
+          <input type="checkbox">
+          <p>Nested Checked List Item</p>
+        </li>
+        <li>
+          <label><input type="checkbox"></label>
+          <p>Nested Checked List Item</p>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <input type="checkbox">
+      <p>Checked List Item</p>
+    </li>
+  </ul>`;
 
     await parseHTMLAndCompareSnapshots(
       html,
@@ -167,37 +222,49 @@ describe("Parse HTML", () => {
 
   it("Parse mixed nested lists", async () => {
     const html = `<ul>
-     <li>
-        Bullet List Item
-        <ol>
-           <li>
-              Nested Numbered List Item
-           </li>
-           <li>
-              Nested Numbered List Item
-           </li>
-        </ol>
-     </li>
-     <li>
-        Bullet List Item
-     </li>
+    <li>Bullet List Item</li>
+    <li>Bullet List Item
+      <ol>
+        <li>Nested Numbered List Item</li>
+        <li>Nested Numbered List Item</li>
+      </ol>
+    </li>
+    <li>Bullet List Item</li>
   </ul>
   <ol>
-     <li>
-        Numbered List Item
-        <ul>
-           <li>
-              <p>Nested Bullet List Item</p>
-           </li>
-           <li>
-              <p>Nested Bullet List Item</p>
-           </li>
-        </ul>
-     </li>
-     <li>
-        Numbered List Item
-     </li>
-  </ol>`;
+    <li>Numbered List Item</li>
+    <li>Numbered List Item
+      <ul>
+        <li>
+          <input type="checkbox" checked>
+          Nested Check List Item
+        </li>
+        <li>
+          <input type="checkbox">
+          Nested Check List Item
+        </li>
+      </ul>
+    </li>
+    <li>Numbered List Item</li>
+  </ol>
+  <ul>
+    <li>
+      <input type="checkbox" checked>
+      Check List Item
+    </li>
+    <li>
+      <input type="checkbox">
+      Check List Item
+      <ul>
+        <li>Nested Bullet List Item</li>
+        <li>Nested Bullet List Item</li>
+      </ul>
+    </li>
+    <li>
+      <input type="checkbox" checked>
+      Nested Check List Item
+    </li>
+  </ul>`;
 
     await parseHTMLAndCompareSnapshots(html, "parse-mixed-nested-lists");
   });
@@ -222,6 +289,14 @@ describe("Parse HTML", () => {
     const html = `<div>Single Div</div><div>second Div</div>`;
 
     await parseHTMLAndCompareSnapshots(html, "parse-two-divs");
+  });
+
+  it("Parse image in paragraph", async () => {
+    const html = `<p>
+    <img src="exampleURL">
+  </p>`;
+
+    await parseHTMLAndCompareSnapshots(html, "parse-image-in-paragraph");
   });
 
   it("Parse fake image caption", async () => {
@@ -440,5 +515,14 @@ With Hard Break</p>
 <br class="Apple-interchange-newline">`;
 
     await parseHTMLAndCompareSnapshots(html, "parse-google-docs-html");
+  });
+
+  it("Parse codeblocks", async () => {
+    const html = `<pre><code>console.log("Should default to JS")</code></pre>
+    <pre><code data-language="typescript">console.log("Should parse TS from data-language")</code></pre>
+    <pre><code class="language-python">print("Should parse Python from language- class")</code></pre>
+    <pre><code class="language-ruby" data-language="typescript">console.log("Should prioritize TS from data-language over language- class")</code></pre>`;
+
+    await parseHTMLAndCompareSnapshots(html, "parse-codeblocks");
   });
 });

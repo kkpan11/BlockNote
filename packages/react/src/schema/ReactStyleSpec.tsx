@@ -7,7 +7,7 @@ import {
 } from "@blocknote/core";
 import { Mark } from "@tiptap/react";
 import { FC } from "react";
-import { renderToDOMSpec } from "./@util/ReactRenderUtil";
+import { renderToDOMSpec } from "./@util/ReactRenderUtil.js";
 
 // this file is mostly analogoues to `customBlocks.ts`, but for React blocks
 
@@ -43,9 +43,10 @@ export function createReactStyleSpec<T extends StyleConfig>(
       }
 
       const Content = styleImplementation.render;
-      const renderResult = renderToDOMSpec((refCB) => (
-        <Content {...props} contentRef={refCB} />
-      ));
+      const renderResult = renderToDOMSpec(
+        (refCB) => <Content {...props} contentRef={refCB} />,
+        undefined
+      );
 
       return addStyleAttributes(
         renderResult,

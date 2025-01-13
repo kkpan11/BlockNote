@@ -2,7 +2,11 @@ import {
   defaultBlockSpecs,
   defaultInlineContentSpecs,
   defaultStyleSpecs,
-} from "../blocks/defaultBlocks";
+} from "../blocks/defaultBlocks.js";
+import type {
+  BlockNoDefaults,
+  PartialBlockNoDefaults,
+} from "../schema/blocks/types.js";
 import {
   BlockSchema,
   BlockSchemaFromSpecs,
@@ -16,12 +20,17 @@ import {
   getBlockSchemaFromSpecs,
   getInlineContentSchemaFromSpecs,
   getStyleSchemaFromSpecs,
-} from "../schema";
-import type {
-  BlockNoDefaults,
-  PartialBlockNoDefaults,
-} from "../schema/blocks/types";
-import type { BlockNoteEditor } from "./BlockNoteEditor";
+} from "../schema/index.js";
+import type { BlockNoteEditor } from "./BlockNoteEditor.js";
+
+function removeUndefined<T extends Record<string, any> | undefined>(obj: T): T {
+  if (!obj) {
+    return obj;
+  }
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  ) as T;
+}
 
 export class BlockNoteSchema<
   BSchema extends BlockSchema,
@@ -84,10 +93,10 @@ export class BlockNoteSchema<
     inlineContentSpecs?: InlineContentSpecs;
     styleSpecs?: StyleSpecs;
   }) {
-    this.blockSpecs = opts?.blockSpecs || defaultBlockSpecs;
+    this.blockSpecs = removeUndefined(opts?.blockSpecs) || defaultBlockSpecs;
     this.inlineContentSpecs =
-      opts?.inlineContentSpecs || defaultInlineContentSpecs;
-    this.styleSpecs = opts?.styleSpecs || defaultStyleSpecs;
+      removeUndefined(opts?.inlineContentSpecs) || defaultInlineContentSpecs;
+    this.styleSpecs = removeUndefined(opts?.styleSpecs) || defaultStyleSpecs;
 
     this.blockSchema = getBlockSchemaFromSpecs(this.blockSpecs) as any;
     this.inlineContentSchema = getInlineContentSchemaFromSpecs(

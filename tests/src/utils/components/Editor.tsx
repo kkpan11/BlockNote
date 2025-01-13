@@ -1,14 +1,16 @@
 import { BlockNoteSchema, filterSuggestionItems } from "@blocknote/core";
 import "@blocknote/core/style.css";
+import { BlockNoteView } from "@blocknote/mantine";
+import "@blocknote/mantine/style.css";
 import {
   BlockNoteDefaultUI,
-  BlockNoteView,
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
   useCreateBlockNote,
 } from "@blocknote/react";
-import { Alert, insertAlert } from "../customblocks/Alert";
-import { Button } from "../customblocks/Button";
+
+import { Alert, insertAlert } from "../customblocks/Alert.js";
+import { Button } from "../customblocks/Button.js";
 
 type WindowWithProseMirror = Window & typeof globalThis & { ProseMirror: any };
 
@@ -21,8 +23,6 @@ const schema = BlockNoteSchema.create({
 
 export default function Editor() {
   const editor = useCreateBlockNote({ schema });
-
-  console.log(editor);
 
   // Give tests a way to get prosemirror instance
   (window as WindowWithProseMirror).ProseMirror = editor?._tiptapEditor;

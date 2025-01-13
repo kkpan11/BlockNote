@@ -29,10 +29,16 @@ export function EditorContent(props: {
 
   useEffect(() => {
     props.editor._tiptapEditor.contentComponent = {
+      /**
+       * Used by TipTap
+       */
       setRenderer(id: string, renderer: ReactRenderer) {
         setRenderers((renderers) => ({ ...renderers, [id]: renderer }));
       },
 
+      /**
+       * Used by TipTap
+       */
       removeRenderer(id: string) {
         setRenderers((renderers) => {
           const nextRenderers = { ...renderers };

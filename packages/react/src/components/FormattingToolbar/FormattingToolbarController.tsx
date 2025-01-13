@@ -4,15 +4,16 @@ import {
   InlineContentSchema,
   StyleSchema,
 } from "@blocknote/core";
-import { flip, offset } from "@floating-ui/react";
-import { FC, useState } from "react";
+import { UseFloatingOptions, flip, offset, shift } from "@floating-ui/react";
+import { FC, useMemo, useRef, useState } from "react";
 
-import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor";
-import { useEditorContentOrSelectionChange } from "../../hooks/useEditorContentOrSelectionChange";
-import { useUIElementPositioning } from "../../hooks/useUIElementPositioning";
-import { useUIPluginState } from "../../hooks/useUIPluginState";
-import { FormattingToolbarProps } from "./FormattingToolbarProps";
-import { FormattingToolbar } from "./mantine/FormattingToolbar";
+import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor.js";
+import { useEditorContentOrSelectionChange } from "../../hooks/useEditorContentOrSelectionChange.js";
+import { useUIElementPositioning } from "../../hooks/useUIElementPositioning.js";
+import { useUIPluginState } from "../../hooks/useUIPluginState.js";
+import { mergeRefs } from "../../util/mergeRefs.js";
+import { FormattingToolbar } from "./FormattingToolbar.js";
+import { FormattingToolbarProps } from "./FormattingToolbarProps.js";
 
 const textAlignmentToPlacement = (
   textAlignment: DefaultProps["textAlignment"]
@@ -31,7 +32,10 @@ const textAlignmentToPlacement = (
 
 export const FormattingToolbarController = (props: {
   formattingToolbar?: FC<FormattingToolbarProps>;
+  floatingOptions?: Partial<UseFloatingOptions>;
 }) => {
+  const divRef = useRef<HTMLDivElement>(null);
+
   const editor = useBlockNoteEditor<
     BlockSchema,
     InlineContentSchema,
@@ -69,24 +73,47 @@ export const FormattingToolbarController = (props: {
   const state = useUIPluginState(
     editor.formattingToolbar.onUpdate.bind(editor.formattingToolbar)
   );
-  const { isMounted, ref, style } = useUIElementPositioning(
+
+  const { isMounted, ref, style, getFloatingProps } = useUIElementPositioning(
     state?.show || false,
     state?.referencePos || null,
     3000,
     {
       placement,
-      middleware: [offset(10), flip()],
+      middleware: [offset(10), shift(), flip()],
+      onOpenChange: (open, _event) => {
+        // console.log("change", event);
+        if (!open) {
+          editor.formattingToolbar.closeMenu();
+          editor.focus();
+        }
+      },
+      ...props.floatingOptions,
     }
   );
+
+  const combinedRef = useMemo(() => mergeRefs([divRef, ref]), [divRef, ref]);
 
   if (!isMounted || !state) {
     return null;
   }
 
+  if (!state.show && divRef.current) {
+    // The component is fading out. Use the previous state to render the toolbar with innerHTML,
+    // because otherwise the toolbar will quickly flickr (i.e.: show a different state) while fading out,
+    // which looks weird
+    return (
+      <div
+        ref={combinedRef}
+        style={style}
+        dangerouslySetInnerHTML={{ __html: divRef.current.innerHTML }}></div>
+    );
+  }
+
   const Component = props.formattingToolbar || FormattingToolbar;
 
   return (
-    <div ref={ref} style={style}>
+    <div ref={combinedRef} style={style} {...getFloatingProps()}>
       <Component />
     </div>
   );

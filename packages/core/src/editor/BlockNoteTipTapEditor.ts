@@ -1,13 +1,15 @@
 import { EditorOptions, createDocument } from "@tiptap/core";
 // import "./blocknote.css";
 import { Editor as TiptapEditor } from "@tiptap/core";
-import { Node } from "@tiptap/pm/model";
-import { EditorView } from "@tiptap/pm/view";
-import { EditorState } from "prosemirror-state";
 
-import { blockToNode } from "../api/nodeConversions/nodeConversions";
-import { PartialBlock } from "../blocks/defaultBlocks";
-import { StyleSchema } from "../schema";
+import { Node } from "@tiptap/pm/model";
+
+import { EditorView } from "@tiptap/pm/view";
+
+import { EditorState, Transaction } from "@tiptap/pm/state";
+import { blockToNode } from "../api/nodeConversions/blockToNode.js";
+import { PartialBlock } from "../blocks/defaultBlocks.js";
+import { StyleSchema } from "../schema/index.js";
 
 export type BlockNoteTipTapEditorOptions = Partial<
   Omit<EditorOptions, "content">
@@ -22,8 +24,33 @@ export type BlockNoteTipTapEditorOptions = Partial<
 // @ts-ignore
 export class BlockNoteTipTapEditor extends TiptapEditor {
   private _state: EditorState;
+  private _creating = false;
+  public static create = (
+    options: BlockNoteTipTapEditorOptions,
+    styleSchema: StyleSchema
+  ) => {
+    // because we separate the constructor from the creation of the view,
+    // we need to patch setTimeout to prevent this code from having any effect:
+    // https://github.com/ueberdosis/tiptap/blob/45bac803283446795ad1b03f43d3746fa54a68ff/packages/core/src/Editor.ts#L117
+    const oldSetTimeout = globalThis?.window?.setTimeout;
+    if (typeof globalThis?.window?.setTimeout !== "undefined") {
+      globalThis.window.setTimeout = (() => {
+        return 0;
+      }) as any;
+    }
+    try {
+      return new BlockNoteTipTapEditor(options, styleSchema);
+    } finally {
+      if (oldSetTimeout) {
+        globalThis.window.setTimeout = oldSetTimeout;
+      }
+    }
+  };
 
-  constructor(options: BlockNoteTipTapEditorOptions, styleSchema: StyleSchema) {
+  protected constructor(
+    options: BlockNoteTipTapEditorOptions,
+    styleSchema: StyleSchema
+  ) {
     // possible fix for next.js server side rendering
     // const d = globalThis.document;
     // const w = globalThis.window;
@@ -32,14 +59,10 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
     //     createElement: () => {},
     //   };
     // }
-    // if (!globalThis.window) {
-    //   globalThis.window = {
-    //     setTimeout: () => {},
-    //   };
-    // }
-    // options.injectCSS = false
-    super({ ...options, content: undefined });
 
+    // options.injectCSS = false
+
+    super({ ...options, content: undefined });
     // try {
     //   globalThis.window = w;
     //   } catch(e) {}
@@ -87,6 +110,7 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
         this.options.parseOptions
       );
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error(
         "Error creating document from blocks passed as `initialContent`. Caused by exception: ",
         e
@@ -114,24 +138,34 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
     return this._state;
   }
 
-  createView() {
-    // no-op
-    // Disable default call to `createView` in the Editor constructor.
-    // We should call `createView` manually only when a DOM element is available
+  dispatch(tr: Transaction) {
+    if (this.view) {
+      this.view.dispatch(tr);
+    } else {
+      // before view has been initialized
+      this._state = this.state.apply(tr);
+    }
   }
 
   /**
    * Replace the default `createView` method with a custom one - which we call on mount
    */
   private createViewAlternative() {
+    this._creating = true;
     // Without queueMicrotask, custom IC / styles will give a React FlushSync error
     queueMicrotask(() => {
-      this.view = new EditorView(this.options.element, {
-        ...this.options.editorProps,
-        // @ts-ignore
-        dispatchTransaction: this.dispatchTransaction.bind(this),
-        state: this.state,
-      });
+      if (!this._creating) {
+        return;
+      }
+      this.view = new EditorView(
+        { mount: this.options.element as any }, // use mount option so that we reuse the existing element instead of creating a new one
+        {
+          ...this.options.editorProps,
+          // @ts-ignore
+          dispatchTransaction: this.dispatchTransaction.bind(this),
+          state: this.state,
+        }
+      );
 
       // `editor.view` is not yet available at this time.
       // Therefore we will add all plugins and node views directly afterwards.
@@ -142,6 +176,13 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
       this.view.updateState(newState);
 
       this.createNodeViews();
+
+      // emit the created event, call here manually because we blocked the default call in the constructor
+      // (https://github.com/ueberdosis/tiptap/blob/45bac803283446795ad1b03f43d3746fa54a68ff/packages/core/src/Editor.ts#L117)
+      this.commands.focus(this.options.autofocus);
+      this.emit("create", { editor: this });
+      this.isInitialized = true;
+      this._creating = false;
     });
   }
 
@@ -153,6 +194,8 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
   public mount = (element?: HTMLElement | null) => {
     if (!element) {
       this.destroy();
+      // cancel pending microtask
+      this._creating = false;
     } else {
       this.options.element = element;
       // @ts-ignore
@@ -160,3 +203,12 @@ export class BlockNoteTipTapEditor extends TiptapEditor {
     }
   };
 }
+
+(BlockNoteTipTapEditor.prototype as any).createView = function () {
+  // no-op
+  // Disable default call to `createView` in the Editor constructor.
+  // We should call `createView` manually only when a DOM element is available
+
+  // additional fix because onPaste and onDrop depend on installing plugins in constructor which we don't support
+  this.options.onPaste = this.options.onDrop = undefined;
+};

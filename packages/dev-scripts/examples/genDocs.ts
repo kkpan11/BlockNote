@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   addTitleToGroups,
   Files,
@@ -7,14 +8,13 @@ import {
   getProjectFiles,
   groupProjects,
   Project,
-} from "./util";
+} from "./util.js";
 
 /*
  `genDocs` generates the nextjs example blocks for the website docs. 
  Note that these files are not checked in to the repo, so this command should always be run before running / building the site
  */
-
-const dir = path.parse(import.meta.url.replace("file://", "")).dir;
+const dir = path.parse(fileURLToPath(import.meta.url)).dir;
 
 const getLanguageFromFileName = (fileName: string) => fileName.split(".").pop();
 
@@ -25,7 +25,9 @@ const templateExampleBlock = (
 ) => `import { ExampleBlock } from "@/components/example/ExampleBlock";
 import { Tabs } from "nextra/components";
 
-<ExampleBlock name="${project.fullSlug}" path="${project.pathFromRoot}">
+<ExampleBlock name="${project.fullSlug}" path="${
+  project.pathFromRoot
+}" isProExample={props.isProExample}>
   <Tabs items={${JSON.stringify(
     Object.keys(files).map((fileName) => fileName.slice(1))
   )}}>
@@ -140,6 +142,7 @@ ${projects
     ExampleWithCode: dynamic(() => import("./mdx/${p.fullSlug}.mdx"), {
       //ssr: false,
     }),
+    pro: ${p.config.pro || false}
   },`;
   })
   .join("\n")}  

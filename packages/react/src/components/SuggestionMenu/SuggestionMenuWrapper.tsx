@@ -1,11 +1,12 @@
 import { BlockSchema, InlineContentSchema, StyleSchema } from "@blocknote/core";
-import { FC, useCallback } from "react";
+import { FC, useCallback, useEffect } from "react";
 
-import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor";
-import { useCloseSuggestionMenuNoItems } from "./hooks/useCloseSuggestionMenuNoItems";
-import { useLoadSuggestionMenuItems } from "./hooks/useLoadSuggestionMenuItems";
-import { useSuggestionMenuKeyboardNavigation } from "./hooks/useSuggestionMenuKeyboardNavigation";
-import { SuggestionMenuProps } from "./types";
+import { useBlockNoteContext } from "../../editor/BlockNoteContext.js";
+import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor.js";
+import { useCloseSuggestionMenuNoItems } from "./hooks/useCloseSuggestionMenuNoItems.js";
+import { useLoadSuggestionMenuItems } from "./hooks/useLoadSuggestionMenuItems.js";
+import { useSuggestionMenuKeyboardNavigation } from "./hooks/useSuggestionMenuKeyboardNavigation.js";
+import { SuggestionMenuProps } from "./types.js";
 
 export function SuggestionMenuWrapper<Item>(props: {
   query: string;
@@ -15,6 +16,8 @@ export function SuggestionMenuWrapper<Item>(props: {
   onItemClick?: (item: Item) => void;
   suggestionMenuComponent: FC<SuggestionMenuProps<Item>>;
 }) {
+  const ctx = useBlockNoteContext();
+  const setContentEditableProps = ctx!.setContentEditableProps!;
   const editor = useBlockNoteEditor<
     BlockSchema,
     InlineContentSchema,
@@ -46,12 +49,44 @@ export function SuggestionMenuWrapper<Item>(props: {
 
   useCloseSuggestionMenuNoItems(items, usedQuery, closeMenu);
 
-  const selectedIndex = useSuggestionMenuKeyboardNavigation(
+  const { selectedIndex } = useSuggestionMenuKeyboardNavigation(
     editor,
+    query,
     items,
-    closeMenu,
     onItemClickCloseMenu
   );
+
+  // set basic aria attributes when the menu is open
+  useEffect(() => {
+    setContentEditableProps((p) => ({
+      ...p,
+      "aria-expanded": true,
+      "aria-controls": "bn-suggestion-menu",
+    }));
+    return () => {
+      setContentEditableProps((p) => ({
+        ...p,
+        "aria-expanded": false,
+        "aria-controls": undefined,
+      }));
+    };
+  }, [setContentEditableProps]);
+
+  // set selected item (activedescendent) attributes when selected item changes
+  useEffect(() => {
+    setContentEditableProps((p) => ({
+      ...p,
+      "aria-activedescendant": selectedIndex
+        ? "bn-suggestion-menu-item-" + selectedIndex
+        : undefined,
+    }));
+    return () => {
+      setContentEditableProps((p) => ({
+        ...p,
+        "aria-activedescendant": undefined,
+      }));
+    };
+  }, [setContentEditableProps, selectedIndex]);
 
   const Component = suggestionMenuComponent;
 

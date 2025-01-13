@@ -1,6 +1,6 @@
 /* eslint-disable jest/valid-title */
-import { test } from "../../setup/setupScript";
-import { BASE_URL } from "../../utils/const";
+import { test } from "../../setup/setupScript.js";
+import { BASE_URL } from "../../utils/const.js";
 import {
   copyPaste,
   copyPasteAll,
@@ -9,9 +9,9 @@ import {
   insertNestedListItems,
   insertParagraph,
   startList,
-} from "../../utils/copypaste";
-import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor";
-import { executeSlashCommand } from "../../utils/slashmenu";
+} from "../../utils/copypaste.js";
+import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor.js";
+import { executeSlashCommand } from "../../utils/slashmenu.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -160,11 +160,9 @@ test.describe("Check Copy/Paste Functionality", () => {
 
     await page.click(`img`);
 
-    await page.waitForSelector(
-      `[class*="bn-image-resize-handle"][style*="right"]`
-    );
+    await page.waitForSelector(`[class*="bn-resize-handle"][style*="right"]`);
     const resizeHandle = page.locator(
-      `[class*="bn-image-resize-handle"][style*="right"]`
+      `[class*="bn-resize-handle"][style*="right"]`
     );
     const resizeHandleBoundingBox = (await resizeHandle.boundingBox())!;
     await page.mouse.move(

@@ -1,17 +1,17 @@
-import { DOMSerializer, Fragment, Node, Schema } from "prosemirror-model";
-import rehypeParse from "rehype-parse";
-import rehypeStringify from "rehype-stringify";
-import { unified } from "unified";
+import { DOMSerializer, Schema } from "prosemirror-model";
 
-import { PartialBlock } from "../../../blocks/defaultBlocks";
-import type { BlockNoteEditor } from "../../../editor/BlockNoteEditor";
-import { BlockSchema, InlineContentSchema, StyleSchema } from "../../../schema";
-import { blockToNode } from "../../nodeConversions/nodeConversions";
+import { PartialBlock } from "../../../blocks/defaultBlocks.js";
+import type { BlockNoteEditor } from "../../../editor/BlockNoteEditor.js";
 import {
-  serializeNodeInner,
-  serializeProseMirrorFragment,
-} from "./util/sharedHTMLConversion";
-import { simplifyBlocks } from "./util/simplifyBlocksRehypePlugin";
+  BlockSchema,
+  InlineContent,
+  InlineContentSchema,
+  StyleSchema,
+} from "../../../schema/index.js";
+import {
+  serializeBlocksExternalHTML,
+  serializeInlineContentExternalHTML,
+} from "./util/serializeBlocksExternalHTML.js";
 
 // Used to export BlockNote blocks and ProseMirror nodes to HTML for use outside
 // the editor. Blocks are exported using the `toExternalHTML` method in their
@@ -26,21 +26,9 @@ import { simplifyBlocks } from "./util/simplifyBlocksRehypePlugin";
 // 3. While nesting for list items is preserved, other types of blocks nested
 // inside a list are un-nested and a new list is created after them.
 // 4. The HTML is wrapped in a single `div` element.
-//
-// The serializer has 2 main methods:
-// `exportBlocks`: Exports an array of blocks to HTML.
-// `exportFragment`: Exports a ProseMirror fragment to HTML. This is mostly
-// useful if you want to export a selection which may not start/end at the
-// start/end of a block.
-export interface ExternalHTMLExporter<
-  BSchema extends BlockSchema,
-  I extends InlineContentSchema,
-  S extends StyleSchema
-> {
-  exportBlocks: (blocks: PartialBlock<BSchema, I, S>[]) => string;
-  exportProseMirrorFragment: (fragment: Fragment) => string;
-}
 
+// Needs to be sync because it's used in drag handler event (SideMenuPlugin)
+// Ideally, call `await initializeESMDependencies()` before calling this function
 export const createExternalHTMLExporter = <
   BSchema extends BlockSchema,
   I extends InlineContentSchema,
@@ -48,47 +36,42 @@ export const createExternalHTMLExporter = <
 >(
   schema: Schema,
   editor: BlockNoteEditor<BSchema, I, S>
-): ExternalHTMLExporter<BSchema, I, S> => {
-  const serializer = DOMSerializer.fromSchema(schema) as DOMSerializer & {
-    serializeNodeInner: (
-      node: Node,
+) => {
+  const serializer = DOMSerializer.fromSchema(schema);
+
+  return {
+    exportBlocks: (
+      blocks: PartialBlock<BSchema, I, S>[],
       options: { document?: Document }
-    ) => HTMLElement;
-    // TODO: Should not be async, but is since we're using a rehype plugin to
-    //  convert internal HTML to external HTML.
-    exportProseMirrorFragment: (fragment: Fragment) => string;
-    exportBlocks: (blocks: PartialBlock<BSchema, I, S>[]) => string;
+    ) => {
+      const html = serializeBlocksExternalHTML(
+        editor,
+        blocks,
+        serializer,
+        new Set<string>(["numberedListItem"]),
+        new Set<string>(["bulletListItem", "checkListItem"]),
+        options
+      );
+      const div = document.createElement("div");
+      div.append(html);
+      return div.innerHTML;
+    },
+
+    exportInlineContent: (
+      inlineContent: InlineContent<I, S>[],
+      options: { document?: Document }
+    ) => {
+      const domFragment = serializeInlineContentExternalHTML(
+        editor,
+        inlineContent as any,
+        serializer,
+        options
+      );
+
+      const parent = document.createElement("div");
+      parent.append(domFragment.cloneNode(true));
+
+      return parent.innerHTML;
+    },
   };
-
-  serializer.serializeNodeInner = (
-    node: Node,
-    options: { document?: Document }
-  ) => serializeNodeInner(node, options, serializer, editor, true);
-
-  // Like the `internalHTMLSerializer`, also uses `serializeProseMirrorFragment`
-  // but additionally runs it through the `simplifyBlocks` rehype plugin to
-  // convert the internal HTML to external.
-  serializer.exportProseMirrorFragment = (fragment) => {
-    const externalHTML = unified()
-      .use(rehypeParse, { fragment: true })
-      .use(simplifyBlocks, {
-        orderedListItemBlockTypes: new Set<string>(["numberedListItem"]),
-        unorderedListItemBlockTypes: new Set<string>(["bulletListItem"]),
-      })
-      .use(rehypeStringify)
-      .processSync(serializeProseMirrorFragment(fragment, serializer));
-
-    return externalHTML.value as string;
-  };
-
-  serializer.exportBlocks = (blocks: PartialBlock<BSchema, I, S>[]) => {
-    const nodes = blocks.map((block) =>
-      blockToNode(block, schema, editor.schema.styleSchema)
-    );
-    const blockGroup = schema.nodes["blockGroup"].create(null, nodes);
-
-    return serializer.exportProseMirrorFragment(Fragment.from(blockGroup));
-  };
-
-  return serializer;
 };

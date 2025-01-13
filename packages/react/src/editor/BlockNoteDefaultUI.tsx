@@ -1,20 +1,20 @@
-import { filterSuggestionItems } from "@blocknote/core";
-import { FormattingToolbarController } from "../components/FormattingToolbar/FormattingToolbarController";
-import { HyperlinkToolbarController } from "../components/HyperlinkToolbar/HyperlinkToolbarController";
-import { ImageToolbarController } from "../components/ImageToolbar/ImageToolbarController";
-import { SideMenuController } from "../components/SideMenu/SideMenuController";
-import { getDefaultReactSlashMenuItems } from "../components/SuggestionMenu/getDefaultReactSlashMenuItems";
-import { SuggestionMenuController } from "../components/SuggestionMenu/SuggestionMenuController";
-import { TableHandlesController } from "../components/TableHandles/TableHandlesController";
-import { useBlockNoteEditor } from "../hooks/useBlockNoteEditor";
+import { FilePanelController } from "../components/FilePanel/FilePanelController.js";
+import { FormattingToolbarController } from "../components/FormattingToolbar/FormattingToolbarController.js";
+import { LinkToolbarController } from "../components/LinkToolbar/LinkToolbarController.js";
+import { SideMenuController } from "../components/SideMenu/SideMenuController.js";
+import { GridSuggestionMenuController } from "../components/SuggestionMenu/GridSuggestionMenu/GridSuggestionMenuController.js";
+import { SuggestionMenuController } from "../components/SuggestionMenu/SuggestionMenuController.js";
+import { TableHandlesController } from "../components/TableHandles/TableHandlesController.js";
+import { useBlockNoteEditor } from "../hooks/useBlockNoteEditor.js";
 
 export type BlockNoteDefaultUIProps = {
   formattingToolbar?: boolean;
-  hyperlinkToolbar?: boolean;
+  linkToolbar?: boolean;
   slashMenu?: boolean;
   sideMenu?: boolean;
-  imageToolbar?: boolean;
+  filePanel?: boolean;
   tableHandles?: boolean;
+  emojiPicker?: boolean;
 };
 
 export function BlockNoteDefaultUI(props: BlockNoteDefaultUIProps) {
@@ -29,23 +29,19 @@ export function BlockNoteDefaultUI(props: BlockNoteDefaultUIProps) {
   return (
     <>
       {props.formattingToolbar !== false && <FormattingToolbarController />}
-      {props.hyperlinkToolbar !== false && <HyperlinkToolbarController />}
+      {props.linkToolbar !== false && <LinkToolbarController />}
       {props.slashMenu !== false && (
-        <SuggestionMenuController
-          getItems={async (query) =>
-            filterSuggestionItems(getDefaultReactSlashMenuItems(editor), query)
-          }
-          // suggestionMenuComponent={MantineSuggestionMenu}
-          onItemClick={(item) => {
-            item.onItemClick();
-          }}
-          triggerCharacter="/"
+        <SuggestionMenuController triggerCharacter="/" />
+      )}
+      {props.emojiPicker !== false && (
+        <GridSuggestionMenuController
+          triggerCharacter=":"
+          columns={10}
+          minQueryLength={2}
         />
       )}
       {props.sideMenu !== false && <SideMenuController />}
-      {editor.imageToolbar && props.imageToolbar !== false && (
-        <ImageToolbarController />
-      )}
+      {editor.filePanel && props.filePanel !== false && <FilePanelController />}
       {editor.tableHandles && props.tableHandles !== false && (
         <TableHandlesController />
       )}

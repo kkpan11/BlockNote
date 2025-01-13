@@ -11,10 +11,17 @@ import {
   createInternalHTMLSerializer,
   partialBlocksToBlocksForTesting,
 } from "@blocknote/core";
+
+import { flushSync } from "react-dom";
+import { Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { customReactBlockSchemaTestCases } from "./testCases/customReactBlocks";
-import { customReactInlineContentTestCases } from "./testCases/customReactInlineContent";
-import { customReactStylesTestCases } from "./testCases/customReactStyles";
+import { BlockNoteViewRaw } from "../editor/BlockNoteView.js";
+import {
+  TestContext,
+  customReactBlockSchemaTestCases,
+} from "./testCases/customReactBlocks.js";
+import { customReactInlineContentTestCases } from "./testCases/customReactInlineContent.js";
+import { customReactStylesTestCases } from "./testCases/customReactStyles.js";
 
 // TODO: code same from @blocknote/core, maybe create separate test util package
 async function convertToHTMLAndCompareSnapshots<
@@ -28,11 +35,8 @@ async function convertToHTMLAndCompareSnapshots<
   snapshotName: string
 ) {
   addIdsToBlocks(blocks);
-  const serializer = createInternalHTMLSerializer(
-    editor._tiptapEditor.schema,
-    editor
-  );
-  const internalHTML = serializer.serializeBlocks(blocks);
+  const serializer = createInternalHTMLSerializer(editor.pmSchema, editor);
+  const internalHTML = serializer.serializeBlocks(blocks, {});
   const internalHTMLSnapshotPath =
     "./__snapshots__/" +
     snapshotDirectory +
@@ -42,20 +46,14 @@ async function convertToHTMLAndCompareSnapshots<
   expect(internalHTML).toMatchFileSnapshot(internalHTMLSnapshotPath);
 
   // turn the internalHTML back into blocks, and make sure no data was lost
-  const fullBlocks = partialBlocksToBlocksForTesting(
-    editor.schema.blockSchema,
-    blocks
-  );
+  const fullBlocks = partialBlocksToBlocksForTesting(editor.schema, blocks);
   const parsed = await editor.tryParseHTMLToBlocks(internalHTML);
 
   expect(parsed).toStrictEqual(fullBlocks);
 
   // Create the "external" HTML, which is a cleaned up HTML representation, but lossy
-  const exporter = createExternalHTMLExporter(
-    editor._tiptapEditor.schema,
-    editor
-  );
-  const externalHTML = exporter.exportBlocks(blocks);
+  const exporter = createExternalHTMLExporter(editor.pmSchema, editor);
+  const externalHTML = exporter.exportBlocks(blocks, {});
   const externalHTMLSnapshotPath =
     "./__snapshots__/" +
     snapshotDirectory +
@@ -75,15 +73,33 @@ describe("Test React HTML conversion", () => {
   for (const testCase of testCases) {
     describe("Case: " + testCase.name, () => {
       let editor: BlockNoteEditor<any, any, any>;
+      // Note that we don't necessarily need to mount a root (unless we need a React Context)
+      // Currently, we do mount to a root so that it reflects the "production" use-case more closely.
+
+      // However, it would be nice to increased converage and share the same set of tests for these cases:
+      // - does render to a root
+      // - does not render to a root
+      // - runs in server (jsdom) environment using server-util
+      let root: Root;
       const div = document.createElement("div");
 
       beforeEach(() => {
         editor = testCase.createEditor();
-        editor.mount(div);
+
+        const el = (
+          <TestContext.Provider value={true}>
+            <BlockNoteViewRaw editor={editor} />
+          </TestContext.Provider>
+        );
+        root = createRoot(div);
+        flushSync(() => {
+          // eslint-disable-next-line testing-library/no-render-in-setup
+          root.render(el);
+        });
       });
 
       afterEach(() => {
-        editor.mount(undefined);
+        root.unmount();
         editor._tiptapEditor.destroy();
         editor = undefined as any;
 

@@ -1,6 +1,9 @@
 {
-  "manipulating-blocks":"",
-  "manipulating-inline-content":"",
-  "cursor-selections":"",
-  "converting-blocks":""
+  "manipulating-blocks": "",
+  "manipulating-inline-content": "",
+  "cursor-selections": "",
+  "converting-blocks": "",
+  "server-processing": "",
+  "export-to-pdf": "",
+  "export-to-docx": ""
 }

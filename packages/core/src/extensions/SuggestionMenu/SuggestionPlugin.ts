@@ -2,15 +2,20 @@ import { findParentNode } from "@tiptap/core";
 import { EditorState, Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 
-import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
-import { BlockSchema, InlineContentSchema, StyleSchema } from "../../schema";
-import { UiElementPosition } from "../../extensions-shared/UiElementPosition";
-import { EventEmitter } from "../../util/EventEmitter";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
+import { UiElementPosition } from "../../extensions-shared/UiElementPosition.js";
+import {
+  BlockSchema,
+  InlineContentSchema,
+  StyleSchema,
+} from "../../schema/index.js";
+import { EventEmitter } from "../../util/EventEmitter.js";
 
 const findBlock = findParentNode((node) => node.type.name === "blockContainer");
 
 export type SuggestionMenuState = UiElementPosition & {
   query: string;
+  ignoreQueryLength?: boolean;
 };
 
 class SuggestionMenuView<
@@ -18,9 +23,9 @@ class SuggestionMenuView<
   I extends InlineContentSchema,
   S extends StyleSchema
 > {
-  private state?: SuggestionMenuState;
+  public state?: SuggestionMenuState;
   public emitUpdate: (triggerCharacter: string) => void;
-
+  private rootEl?: Document | ShadowRoot;
   pluginState: SuggestionPluginState;
 
   constructor(
@@ -34,18 +39,29 @@ class SuggestionMenuView<
         throw new Error("Attempting to update uninitialized suggestions menu");
       }
 
-      emitUpdate(menuName, this.state);
+      emitUpdate(menuName, {
+        ...this.state,
+        ignoreQueryLength: this.pluginState?.ignoreQueryLength,
+      });
     };
 
-    document.addEventListener("scroll", this.handleScroll);
+    this.rootEl = this.editor.prosemirrorView?.root;
+
+    // Setting capture=true ensures that any parent container of the editor that
+    // gets scrolled will trigger the scroll event. Scroll events do not bubble
+    // and so won't propagate to the document by default.
+    this.rootEl?.addEventListener("scroll", this.handleScroll, true);
   }
 
   handleScroll = () => {
     if (this.state?.show) {
-      const decorationNode = document.querySelector(
+      const decorationNode = this.rootEl?.querySelector(
         `[data-decoration-id="${this.pluginState!.decorationId}"]`
       );
-      this.state.referencePos = decorationNode!.getBoundingClientRect();
+      if (!decorationNode) {
+        return;
+      }
+      this.state.referencePos = decorationNode.getBoundingClientRect();
       this.emitUpdate(this.pluginState!.triggerCharacter!);
     }
   };
@@ -76,14 +92,14 @@ class SuggestionMenuView<
       return;
     }
 
-    const decorationNode = document.querySelector(
+    const decorationNode = this.rootEl?.querySelector(
       `[data-decoration-id="${this.pluginState!.decorationId}"]`
     );
 
-    if (this.editor.isEditable) {
+    if (this.editor.isEditable && decorationNode) {
       this.state = {
         show: true,
-        referencePos: decorationNode!.getBoundingClientRect(),
+        referencePos: decorationNode.getBoundingClientRect(),
         query: this.pluginState!.query,
       };
 
@@ -92,15 +108,12 @@ class SuggestionMenuView<
   }
 
   destroy() {
-    document.removeEventListener("scroll", this.handleScroll);
+    this.rootEl?.removeEventListener("scroll", this.handleScroll, true);
   }
 
   closeMenu = () => {
-    this.editor._tiptapEditor.view.dispatch(
-      this.editor._tiptapEditor.view.state.tr.setMeta(
-        suggestionMenuPluginKey,
-        null
-      )
+    this.editor.dispatch(
+      this.editor._tiptapEditor.state.tr.setMeta(suggestionMenuPluginKey, null)
     );
   };
 
@@ -115,7 +128,7 @@ class SuggestionMenuView<
       .deleteRange({
         from:
           this.pluginState.queryStartPos! -
-          (this.pluginState.fromUserInput
+          (this.pluginState.deleteTriggerCharacter
             ? this.pluginState.triggerCharacter!.length
             : 0),
         to: this.editor._tiptapEditor.state.selection.from,
@@ -127,14 +140,15 @@ class SuggestionMenuView<
 type SuggestionPluginState =
   | {
       triggerCharacter: string;
-      fromUserInput: boolean;
+      deleteTriggerCharacter: boolean;
       queryStartPos: number;
       query: string;
       decorationId: string;
+      ignoreQueryLength?: boolean;
     }
   | undefined;
 
-export const suggestionMenuPluginKey = new PluginKey("SuggestionMenuPlugin");
+const suggestionMenuPluginKey = new PluginKey("SuggestionMenuPlugin");
 
 /**
  * A ProseMirror plugin for suggestions, designed to make '/'-commands possible as well as mentions.
@@ -185,11 +199,17 @@ export class SuggestionMenuProseMirrorPlugin<
             return prev;
           }
 
+          // Ignore transactions in code blocks.
+          if (transaction.selection.$from.parent.type.spec.code) {
+            return prev;
+          }
+
           // Either contains the trigger character if the menu should be shown,
           // or null if it should be hidden.
           const suggestionPluginTransactionMeta: {
             triggerCharacter: string;
-            fromUserInput?: boolean;
+            deleteTriggerCharacter?: boolean;
+            ignoreQueryLength?: boolean;
           } | null = transaction.getMeta(suggestionMenuPluginKey);
 
           // Only opens a menu of no menu is already open
@@ -201,11 +221,14 @@ export class SuggestionMenuProseMirrorPlugin<
             return {
               triggerCharacter:
                 suggestionPluginTransactionMeta.triggerCharacter,
-              fromUserInput:
-                suggestionPluginTransactionMeta.fromUserInput !== false,
+              deleteTriggerCharacter:
+                suggestionPluginTransactionMeta.deleteTriggerCharacter !==
+                false,
               queryStartPos: newState.selection.from,
               query: "",
               decorationId: `id_${Math.floor(Math.random() * 0xffffffff)}`,
+              ignoreQueryLength:
+                suggestionPluginTransactionMeta?.ignoreQueryLength,
             };
           }
 
@@ -245,29 +268,26 @@ export class SuggestionMenuProseMirrorPlugin<
       },
 
       props: {
-        handleKeyDown(view, event) {
+        handleTextInput(view, _from, _to, text) {
           const suggestionPluginState: SuggestionPluginState = (
             this as Plugin
           ).getState(view.state);
 
           if (
-            triggerCharacters.includes(event.key) &&
+            triggerCharacters.includes(text) &&
             suggestionPluginState === undefined
           ) {
-            event.preventDefault();
-
             view.dispatch(
               view.state.tr
-                .insertText(event.key)
+                .insertText(text)
                 .scrollIntoView()
                 .setMeta(suggestionMenuPluginKey, {
-                  triggerCharacter: event.key,
+                  triggerCharacter: text,
                 })
             );
 
             return true;
           }
-
           return false;
         },
 
@@ -283,7 +303,7 @@ export class SuggestionMenuProseMirrorPlugin<
 
           // If the menu was opened programmatically by another extension, it may not use a trigger character. In this
           // case, the decoration is set on the whole block instead, as the decoration range would otherwise be empty.
-          if (!suggestionPluginState.fromUserInput) {
+          if (!suggestionPluginState.deleteTriggerCharacter) {
             const blockNode = findBlock(state.selection);
             if (blockNode) {
               return DecorationSet.create(state.doc, [
@@ -342,6 +362,10 @@ export class SuggestionMenuProseMirrorPlugin<
   closeMenu = () => this.view!.closeMenu();
 
   clearQuery = () => this.view!.clearQuery();
+
+  public get shown() {
+    return this.view?.state?.show || false;
+  }
 }
 
 export function createSuggestionMenu<

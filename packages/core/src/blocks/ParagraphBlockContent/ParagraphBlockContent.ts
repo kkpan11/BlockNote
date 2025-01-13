@@ -1,10 +1,11 @@
+import { updateBlockCommand } from "../../api/blockManipulation/commands/updateBlock/updateBlock.js";
+import { getBlockInfoFromSelection } from "../../api/getBlockInfoFromPos.js";
 import {
   createBlockSpecFromStronglyTypedTiptapNode,
   createStronglyTypedTiptapNode,
-} from "../../schema";
-import { createDefaultBlockDOMOutputSpec } from "../defaultBlockHelpers";
-import { defaultProps } from "../defaultProps";
-import { handleEnter } from "../ListItemBlockContent/ListItemKeyboardShortcuts";
+} from "../../schema/index.js";
+import { createDefaultBlockDOMOutputSpec } from "../defaultBlockHelpers.js";
+import { defaultProps } from "../defaultProps.js";
 
 export const paragraphPropSchema = {
   ...defaultProps,
@@ -17,12 +18,22 @@ export const ParagraphBlockContent = createStronglyTypedTiptapNode({
 
   addKeyboardShortcuts() {
     return {
-      Enter: () => handleEnter(this.editor),
-      "Mod-Alt-0": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "paragraph",
-          props: {},
-        }),
+      "Mod-Alt-0": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "paragraph",
+            props: {},
+          })
+        );
+      },
     };
   },
 
@@ -32,6 +43,13 @@ export const ParagraphBlockContent = createStronglyTypedTiptapNode({
       {
         tag: "p",
         priority: 200,
+        getAttrs: (element) => {
+          if (typeof element === "string" || !element.textContent?.trim()) {
+            return false;
+          }
+
+          return {};
+        },
         node: "paragraph",
       },
     ];

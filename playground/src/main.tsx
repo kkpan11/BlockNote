@@ -2,13 +2,13 @@ import { AppShell, MantineProvider, ScrollArea } from "@mantine/core";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import {
-  createBrowserRouter,
   Link,
   Outlet,
   RouterProvider,
+  createBrowserRouter,
 } from "react-router-dom";
 
-import { examples } from "./examples.gen";
+import { examples } from "./examples.gen.js";
 import "./style.css";
 
 window.React = React;
@@ -96,10 +96,9 @@ const App = (props: { project: (typeof examples.basic)["projects"][0] }) => {
   React.useEffect(() => {
     (async () => {
       // load app async
-      console.log("../../" + props.project.pathFromRoot + "/App.tsx");
-      const c: any = await modules[
-        "../../" + props.project.pathFromRoot + "/App.tsx"
-      ]();
+      const moduleName = "../../" + props.project.pathFromRoot + "/App.tsx";
+      const module = modules[moduleName];
+      const c: any = await module();
       setExampleComponent(c);
     })();
   }, [props.project.pathFromRoot]);

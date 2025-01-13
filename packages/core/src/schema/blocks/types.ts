@@ -1,14 +1,14 @@
 /** Define the main block types **/
 import type { Extension, Node } from "@tiptap/core";
 
-import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
 import type {
   InlineContent,
   InlineContentSchema,
   PartialInlineContent,
-} from "../inlineContent/types";
-import type { PropSchema, Props } from "../propTypes";
-import type { StyleSchema } from "../styles/types";
+} from "../inlineContent/types.js";
+import type { PropSchema, Props } from "../propTypes.js";
+import type { StyleSchema } from "../styles/types.js";
 
 export type BlockNoteDOMElement =
   | "editor"
@@ -21,13 +21,50 @@ export type BlockNoteDOMAttributes = Partial<{
   [DOMElement in BlockNoteDOMElement]: Record<string, string>;
 }>;
 
+export type FileBlockConfig = {
+  type: string;
+  readonly propSchema: PropSchema & {
+    caption: {
+      default: "";
+    };
+    name: {
+      default: "";
+    };
+
+    // URL is optional, as we also want to accept files with no URL, but for example ids
+    // (ids can be used for files that are resolved on the backend)
+    url?: {
+      default: "";
+    };
+
+    // Whether to show the file preview or the name only.
+    // This is useful for some file blocks, but not all
+    // (e.g.: not relevant for default "file" block which doesn;'t show previews)
+    showPreview?: {
+      default: boolean;
+    };
+    // File preview width in px.
+    previewWidth?: {
+      default: number;
+    };
+  };
+  content: "none";
+  isSelectable?: boolean;
+  isFileBlock: true;
+  fileBlockAccept?: string[];
+};
+
 // BlockConfig contains the "schema" info about a Block type
 // i.e. what props it supports, what content it supports, etc.
-export type BlockConfig = {
-  type: string;
-  readonly propSchema: PropSchema;
-  content: "inline" | "none" | "table";
-};
+export type BlockConfig =
+  | {
+      type: string;
+      readonly propSchema: PropSchema;
+      content: "inline" | "none" | "table";
+      isSelectable?: boolean;
+      isFileBlock?: false;
+    }
+  | FileBlockConfig;
 
 // Block implementation contains the "implementation" info about a Block
 // such as the functions / Nodes required to render and / or serialize it
@@ -67,7 +104,7 @@ export type BlockSpec<
   S extends StyleSchema
 > = {
   config: T;
-  implementation: TiptapBlockImplementation<T, B, I, S>;
+  implementation: TiptapBlockImplementation<NoInfer<T>, B, I, S>;
 };
 
 // Utility type. For a given object block schema, ensures that the key of each
@@ -112,6 +149,7 @@ export type TableContent<
   S extends StyleSchema = StyleSchema
 > = {
   type: "tableContent";
+  columnWidths: (number | undefined)[];
   rows: {
     cells: InlineContent<I, S>[][];
   }[];
@@ -187,6 +225,7 @@ export type PartialTableContent<
   S extends StyleSchema = StyleSchema
 > = {
   type: "tableContent";
+  columnWidths?: (number | undefined)[];
   rows: {
     cells: PartialInlineContent<I, S>[];
   }[];

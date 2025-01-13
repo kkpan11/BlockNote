@@ -6,14 +6,14 @@ import {
   Node,
   NodeConfig,
 } from "@tiptap/core";
-import { defaultBlockToHTML } from "../../blocks/defaultBlockHelpers";
-import { inheritedProps } from "../../blocks/defaultProps";
-import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
-import { mergeCSSClasses } from "../../util/browser";
-import { camelToDataKebab } from "../../util/string";
-import { InlineContentSchema } from "../inlineContent/types";
-import { PropSchema, Props } from "../propTypes";
-import { StyleSchema } from "../styles/types";
+import { defaultBlockToHTML } from "../../blocks/defaultBlockHelpers.js";
+import { inheritedProps } from "../../blocks/defaultProps.js";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
+import { mergeCSSClasses } from "../../util/browser.js";
+import { camelToDataKebab } from "../../util/string.js";
+import { InlineContentSchema } from "../inlineContent/types.js";
+import { PropSchema, Props } from "../propTypes.js";
+import { StyleSchema } from "../styles/types.js";
 import {
   BlockConfig,
   BlockSchemaFromSpecs,
@@ -22,7 +22,7 @@ import {
   BlockSpecs,
   SpecificBlock,
   TiptapBlockImplementation,
-} from "./types";
+} from "./types.js";
 
 // Function that uses the 'propSchema' of a blockConfig to create a TipTap
 // node's `addAttributes` property.
@@ -46,7 +46,10 @@ export function propsToAttributes(propSchema: PropSchema): Attributes {
             return null;
           }
 
-          if (typeof spec.default === "boolean") {
+          if (
+            (spec.default === undefined && spec.type === "boolean") ||
+            (spec.default !== undefined && typeof spec.default === "boolean")
+          ) {
             if (value === "true") {
               return true;
             }
@@ -58,7 +61,10 @@ export function propsToAttributes(propSchema: PropSchema): Attributes {
             return null;
           }
 
-          if (typeof spec.default === "number") {
+          if (
+            (spec.default === undefined && spec.type === "number") ||
+            (spec.default !== undefined && typeof spec.default === "number")
+          ) {
             const asNumber = parseFloat(value);
             const isNumeric =
               !Number.isNaN(asNumber) && Number.isFinite(asNumber);
@@ -72,12 +78,14 @@ export function propsToAttributes(propSchema: PropSchema): Attributes {
 
           return value;
         },
-        renderHTML: (attributes) =>
-          attributes[name] !== spec.default
+        renderHTML: (attributes) => {
+          // don't render to html if the value is the same as the default
+          return attributes[name] !== spec.default
             ? {
                 [camelToDataKebab(name)]: attributes[name],
               }
-            : {},
+            : {};
+        },
       };
     });
 
@@ -109,6 +117,11 @@ export function getBlockFromPos<
   const blockContainer = tipTapEditor.state.doc.resolve(pos!).node();
   // Gets block identifier
   const blockIdentifier = blockContainer.attrs.id;
+
+  if (!blockIdentifier) {
+    throw new Error("Block doesn't have id");
+  }
+
   // Gets the block
   const block = editor.getBlock(blockIdentifier)! as SpecificBlock<
     BSchema,
@@ -139,6 +152,7 @@ export function wrapInBlockStructure<
   blockType: BType,
   blockProps: Props<PSchema>,
   propSchema: PSchema,
+  isFileBlock = false,
   domAttributes?: Record<string, string>
 ): {
   dom: HTMLElement;
@@ -167,9 +181,15 @@ export function wrapInBlockStructure<
   // which are already added as HTML attributes to the parent `blockContent`
   // element (inheritedProps) and props set to their default values.
   for (const [prop, value] of Object.entries(blockProps)) {
-    if (!inheritedProps.includes(prop) && value !== propSchema[prop].default) {
+    const spec = propSchema[prop];
+    const defaultValue = spec.default;
+    if (!inheritedProps.includes(prop) && value !== defaultValue) {
       blockContent.setAttribute(camelToDataKebab(prop), value);
     }
+  }
+  // Adds file block attribute
+  if (isFileBlock) {
+    blockContent.setAttribute("data-file-block", "");
   }
 
   blockContent.appendChild(element.dom);
@@ -191,12 +211,22 @@ export function wrapInBlockStructure<
 // Helper type to keep track of the `name` and `content` properties after calling Node.create.
 type StronglyTypedTipTapNode<
   Name extends string,
-  Content extends "inline*" | "tableRow+" | ""
+  Content extends
+    | "inline*"
+    | "tableRow+"
+    | "blockContainer+"
+    | "column column+"
+    | ""
 > = Node & { name: Name; config: { content: Content } };
 
 export function createStronglyTypedTiptapNode<
   Name extends string,
-  Content extends "inline*" | "tableRow+" | ""
+  Content extends
+    | "inline*"
+    | "tableRow+"
+    | "blockContainer+"
+    | "column column+"
+    | ""
 >(config: NodeConfig & { name: Name; content: Content }) {
   return Node.create(config) as StronglyTypedTipTapNode<Name, Content>; // force re-typing (should be safe as it's type-checked from the config)
 }
