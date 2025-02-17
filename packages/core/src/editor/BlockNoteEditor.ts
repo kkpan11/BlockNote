@@ -1,38 +1,61 @@
-import { EditorOptions, Extension } from "@tiptap/core";
-import { Node } from "prosemirror-model";
+import {
+  AnyExtension,
+  EditorOptions,
+  Extension,
+  getSchema,
+  Mark,
+  Node as TipTapNode,
+} from "@tiptap/core";
+import { Node, Schema } from "prosemirror-model";
 // import "./blocknote.css";
 import * as Y from "yjs";
+import { insertBlocks } from "../api/blockManipulation/commands/insertBlocks/insertBlocks.js";
 import {
-  insertBlocks,
-  insertContentAt,
-  removeBlocks,
-  replaceBlocks,
-  updateBlock,
-} from "../api/blockManipulation/blockManipulation";
-import { createExternalHTMLExporter } from "../api/exporters/html/externalHTMLExporter";
-import { blocksToMarkdown } from "../api/exporters/markdown/markdownExporter";
-import { getBlockInfoFromPos } from "../api/getBlockInfoFromPos";
+  moveBlocksDown,
+  moveBlocksUp,
+} from "../api/blockManipulation/commands/moveBlocks/moveBlocks.js";
 import {
-  inlineContentToNodes,
-  nodeToBlock,
-} from "../api/nodeConversions/nodeConversions";
-import { getNodeById } from "../api/nodeUtil";
-import { HTMLToBlocks } from "../api/parsers/html/parseHTML";
-import { markdownToBlocks } from "../api/parsers/markdown/parseMarkdown";
+  canNestBlock,
+  canUnnestBlock,
+  nestBlock,
+  unnestBlock,
+} from "../api/blockManipulation/commands/nestBlock/nestBlock.js";
+import { removeBlocks } from "../api/blockManipulation/commands/removeBlocks/removeBlocks.js";
+import { replaceBlocks } from "../api/blockManipulation/commands/replaceBlocks/replaceBlocks.js";
+import { updateBlock } from "../api/blockManipulation/commands/updateBlock/updateBlock.js";
+import {
+  getBlock,
+  getNextBlock,
+  getParentBlock,
+  getPrevBlock,
+} from "../api/blockManipulation/getBlock/getBlock.js";
+import { insertContentAt } from "../api/blockManipulation/insertContentAt.js";
+import {
+  getSelection,
+  setSelection,
+} from "../api/blockManipulation/selections/selection.js";
+import {
+  getTextCursorPosition,
+  setTextCursorPosition,
+} from "../api/blockManipulation/selections/textCursorPosition/textCursorPosition.js";
+import { createExternalHTMLExporter } from "../api/exporters/html/externalHTMLExporter.js";
+import { blocksToMarkdown } from "../api/exporters/markdown/markdownExporter.js";
+import { HTMLToBlocks } from "../api/parsers/html/parseHTML.js";
+import { markdownToBlocks } from "../api/parsers/markdown/parseMarkdown.js";
 import {
   Block,
   DefaultBlockSchema,
   DefaultInlineContentSchema,
   DefaultStyleSchema,
   PartialBlock,
-} from "../blocks/defaultBlocks";
-import { FormattingToolbarProsemirrorPlugin } from "../extensions/FormattingToolbar/FormattingToolbarPlugin";
-import { HyperlinkToolbarProsemirrorPlugin } from "../extensions/HyperlinkToolbar/HyperlinkToolbarPlugin";
-import { ImageToolbarProsemirrorPlugin } from "../extensions/ImageToolbar/ImageToolbarPlugin";
-import { SideMenuProsemirrorPlugin } from "../extensions/SideMenu/SideMenuPlugin";
-import { SuggestionMenuProseMirrorPlugin } from "../extensions/SuggestionMenu/SuggestionPlugin";
-import { TableHandlesProsemirrorPlugin } from "../extensions/TableHandles/TableHandlesPlugin";
-import { UniqueID } from "../extensions/UniqueID/UniqueID";
+} from "../blocks/defaultBlocks.js";
+import { FilePanelProsemirrorPlugin } from "../extensions/FilePanel/FilePanelPlugin.js";
+import { FormattingToolbarProsemirrorPlugin } from "../extensions/FormattingToolbar/FormattingToolbarPlugin.js";
+import { LinkToolbarProsemirrorPlugin } from "../extensions/LinkToolbar/LinkToolbarPlugin.js";
+import { SideMenuProsemirrorPlugin } from "../extensions/SideMenu/SideMenuPlugin.js";
+import { SuggestionMenuProseMirrorPlugin } from "../extensions/SuggestionMenu/SuggestionPlugin.js";
+import { TableHandlesProsemirrorPlugin } from "../extensions/TableHandles/TableHandlesPlugin.js";
+import { UniqueID } from "../extensions/UniqueID/UniqueID.js";
 import {
   BlockIdentifier,
   BlockNoteDOMAttributes,
@@ -41,38 +64,76 @@ import {
   InlineContentSchema,
   InlineContentSpecs,
   PartialInlineContent,
+  Styles,
   StyleSchema,
   StyleSpecs,
-  Styles,
-} from "../schema";
-import { mergeCSSClasses } from "../util/browser";
-import { NoInfer, UnreachableCaseError } from "../util/typescript";
+} from "../schema/index.js";
+import { mergeCSSClasses } from "../util/browser.js";
+import { NoInfer, UnreachableCaseError } from "../util/typescript.js";
 
-import { getBlockNoteExtensions } from "./BlockNoteExtensions";
-import { TextCursorPosition } from "./cursorPositionTypes";
+import { getBlockNoteExtensions } from "./BlockNoteExtensions.js";
+import { TextCursorPosition } from "./cursorPositionTypes.js";
 
-import { Selection } from "./selectionTypes";
-import { transformPasted } from "./transformPasted";
+import { Selection } from "./selectionTypes.js";
+import { transformPasted } from "./transformPasted.js";
 
-// CSS
-import { checkDefaultBlockTypeInSchema } from "../blocks/defaultBlockTypeGuards";
-import "./Block.css";
-import { BlockNoteSchema } from "./BlockNoteSchema";
+import { checkDefaultBlockTypeInSchema } from "../blocks/defaultBlockTypeGuards.js";
+import { BlockNoteSchema } from "./BlockNoteSchema.js";
 import {
   BlockNoteTipTapEditor,
   BlockNoteTipTapEditorOptions,
-} from "./BlockNoteTipTapEditor";
-import "./editor.css";
+} from "./BlockNoteTipTapEditor.js";
+
+import { Dictionary } from "../i18n/dictionary.js";
+import { en } from "../i18n/locales/index.js";
+
+import { Plugin, Transaction } from "@tiptap/pm/state";
+import { dropCursor } from "prosemirror-dropcursor";
+import { EditorView } from "prosemirror-view";
+import { createInternalHTMLSerializer } from "../api/exporters/html/internalHTMLSerializer.js";
+import { inlineContentToNodes } from "../api/nodeConversions/blockToNode.js";
+import { nodeToBlock } from "../api/nodeConversions/nodeToBlock.js";
+import "../style.css";
+
+export type BlockNoteExtensionFactory = (
+  editor: BlockNoteEditor<any, any, any>
+) => BlockNoteExtension;
+
+export type BlockNoteExtension =
+  | AnyExtension
+  | {
+      plugin: Plugin;
+    };
 
 export type BlockNoteEditorOptions<
   BSchema extends BlockSchema,
   ISchema extends InlineContentSchema,
   SSchema extends StyleSchema
 > = {
-  // TODO: Figure out if enableBlockNoteExtensions/disableHistoryExtension are needed and document them.
-  enableBlockNoteExtensions: boolean;
+  /**
+   * Whether changes to blocks (like indentation, creating lists, changing headings) should be animated or not. Defaults to `true`.
+   *
+   * @default true
+   */
+  animations?: boolean;
 
-  placeholders: Record<string | "default", string>;
+  /**
+   * Disable internal extensions (based on keys / extension name)
+   */
+  disableExtensions: string[];
+
+  /**
+   * A dictionary object containing translations for the editor.
+   */
+  dictionary?: Dictionary & Record<string, any>;
+
+  /**
+   * @deprecated, provide placeholders via dictionary instead
+   */
+  placeholders: Record<
+    string | "default" | "emptyDocument",
+    string | undefined
+  >;
 
   /**
    * An object containing attributes that should be added to HTML elements of the editor.
@@ -99,11 +160,25 @@ export type BlockNoteEditorOptions<
   schema: BlockNoteSchema<BSchema, ISchema, SSchema>;
 
   /**
-   * A custom function to handle file uploads.
+   * The `uploadFile` method is what the editor uses when files need to be uploaded (for example when selecting an image to upload).
+   * This method should set when creating the editor as this is application-specific.
+   *
+   * `undefined` means the application doesn't support file uploads.
+   *
    * @param file The file that should be uploaded.
-   * @returns The URL of the uploaded file.
+   * @returns The URL of the uploaded file OR an object containing props that should be set on the file block (such as an id)
    */
-  uploadFile: (file: File) => Promise<string>;
+  uploadFile: (
+    file: File,
+    blockId?: string
+  ) => Promise<string | Record<string, any>>;
+
+  /**
+   * Resolve a URL of a file block to one that can be displayed or downloaded. This can be used for creating authenticated URL or
+   * implementing custom protocols / schemes
+   * @returns The URL that's
+   */
+  resolveFileUrl: (url: string) => Promise<string>;
 
   /**
    * When enabled, allows for collaboration between multiple users.
@@ -128,10 +203,71 @@ export type BlockNoteEditorOptions<
      * Optional function to customize how cursors of users are rendered
      */
     renderCursor?: (user: any) => HTMLElement;
+    /**
+     * Optional flag to set when the user label should be shown with the default
+     * collaboration cursor. Setting to "always" will always show the label,
+     * while "activity" will only show the label when the user moves the cursor
+     * or types. Defaults to "activity".
+     */
+    showCursorLabels?: "always" | "activity";
   };
 
-  // tiptap options, undocumented
+  /**
+   * additional tiptap options, undocumented
+   */
   _tiptapOptions: Partial<EditorOptions>;
+
+  /**
+   * (experimental) add extra prosemirror plugins or tiptap extensions to the editor
+   */
+  _extensions: Record<string, BlockNoteExtension | BlockNoteExtensionFactory>;
+
+  trailingBlock?: boolean;
+
+  /**
+   * Boolean indicating whether the editor is in headless mode.
+   * Headless mode means we can use features like importing / exporting blocks,
+   * but there's no underlying editor (UI) instantiated.
+   *
+   * You probably don't need to set this manually, but use the `server-util` package instead that uses this option internally
+   */
+  _headless: boolean;
+
+  /**
+   * A flag indicating whether to set an HTML ID for every block
+   *
+   * When set to `true`, on each block an id attribute will be set with the block id
+   * Otherwise, the HTML ID attribute will not be set.
+   *
+   * (note that the id is always set on the `data-id` attribute)
+   */
+  setIdAttribute?: boolean;
+
+  dropCursor?: (opts: any) => Plugin;
+
+  /**
+   Select desired behavior when pressing `Tab` (or `Shift-Tab`). Specifically,
+   what should happen when a user has selected multiple blocks while a toolbar
+   is open:
+   - `"prefer-navigate-ui"`: Change focus to the toolbar. The user needs to
+   first press `Escape` to close the toolbar, and can then indent multiple
+   blocks. Better for keyboard accessibility.
+   - `"prefer-indent"`: Regardless of whether toolbars are open, indent the
+   selection of blocks. In this case, it's not possible to navigate toolbars
+   with the keyboard.
+
+   @default "prefer-navigate-ui"
+   */
+  tabBehavior: "prefer-navigate-ui" | "prefer-indent";
+
+  /**
+   * The detection mode for showing the side menu - "viewport" always shows the
+   * side menu for the block next to the mouse cursor, while "editor" only shows
+   * it when hovering the editor or the side menu itself.
+   *
+   * @default "viewport"
+   */
+  sideMenuDetection: "viewport" | "editor";
 };
 
 const blockNoteTipTapOptions = {
@@ -145,10 +281,50 @@ export class BlockNoteEditor<
   ISchema extends InlineContentSchema = DefaultInlineContentSchema,
   SSchema extends StyleSchema = DefaultStyleSchema
 > {
-  public readonly _tiptapEditor: BlockNoteTipTapEditor & {
-    contentComponent: any;
-  };
+  private readonly _pmSchema: Schema;
+
+  /**
+   * extensions that are added to the editor, can be tiptap extensions or prosemirror plugins
+   */
+  public readonly extensions: Record<string, BlockNoteExtension> = {};
+
+  /**
+   * Boolean indicating whether the editor is in headless mode.
+   * Headless mode means we can use features like importing / exporting blocks,
+   * but there's no underlying editor (UI) instantiated.
+   *
+   * You probably don't need to set this manually, but use the `server-util` package instead that uses this option internally
+   */
+  public readonly headless: boolean = false;
+
+  public readonly _tiptapEditor:
+    | Omit<BlockNoteTipTapEditor, "view"> & {
+        view: EditorView | undefined;
+        contentComponent: any;
+      } = undefined as any; // TODO: Type should actually reflect that it can be `undefined` in headless mode
+
+  /**
+   * Used by React to store a reference to an `ElementRenderer` helper utility to make sure we can render React elements
+   * in the correct context (used by `ReactRenderUtil`)
+   */
+  public elementRenderer: ((node: any, container: HTMLElement) => void) | null =
+    null;
+
+  /**
+   * Cache of all blocks. This makes sure we don't have to "recompute" blocks if underlying Prosemirror Nodes haven't changed.
+   * This is especially useful when we want to keep track of the same block across multiple operations,
+   * with this cache, blocks stay the same object reference (referential equality with ===).
+   */
   public blockCache = new WeakMap<Node, Block<any, any, any>>();
+
+  /**
+   * The dictionary contains translations for the editor.
+   */
+  public readonly dictionary: Dictionary & Record<string, any>;
+
+  /**
+   * The schema of the editor. The schema defines which Blocks, InlineContent, and Styles are available in the editor.
+   */
   public readonly schema: BlockNoteSchema<BSchema, ISchema, SSchema>;
 
   public readonly blockImplementations: BlockSpecs;
@@ -156,7 +332,7 @@ export class BlockNoteEditor<
   public readonly styleImplementations: StyleSpecs;
 
   public readonly formattingToolbar: FormattingToolbarProsemirrorPlugin;
-  public readonly hyperlinkToolbar: HyperlinkToolbarProsemirrorPlugin<
+  public readonly linkToolbar: LinkToolbarProsemirrorPlugin<
     BSchema,
     ISchema,
     SSchema
@@ -171,16 +347,33 @@ export class BlockNoteEditor<
     ISchema,
     SSchema
   >;
-  public readonly imageToolbar?: ImageToolbarProsemirrorPlugin<
-    ISchema,
-    SSchema
-  >;
+  public readonly filePanel?: FilePanelProsemirrorPlugin<ISchema, SSchema>;
   public readonly tableHandles?: TableHandlesProsemirrorPlugin<
     ISchema,
     SSchema
   >;
 
-  public readonly uploadFile: ((file: File) => Promise<string>) | undefined;
+  /**
+   * The `uploadFile` method is what the editor uses when files need to be uploaded (for example when selecting an image to upload).
+   * This method should set when creating the editor as this is application-specific.
+   *
+   * `undefined` means the application doesn't support file uploads.
+   *
+   * @param file The file that should be uploaded.
+   * @returns The URL of the uploaded file OR an object containing props that should be set on the file block (such as an id)
+   */
+  public readonly uploadFile:
+    | ((file: File, blockId?: string) => Promise<string | Record<string, any>>)
+    | undefined;
+
+  private onUploadStartCallbacks: ((blockId?: string) => void)[] = [];
+  private onUploadEndCallbacks: ((blockId?: string) => void)[] = [];
+
+  public readonly resolveFileUrl?: (url: string) => Promise<string>;
+
+  public get pmSchema() {
+    return this._pmSchema;
+  }
 
   public static create<
     BSchema extends BlockSchema = DefaultBlockSchema,
@@ -190,8 +383,8 @@ export class BlockNoteEditor<
     return new BlockNoteEditor<BSchema, ISchema, SSchema>(options);
   }
 
-  private constructor(
-    private readonly options: Partial<BlockNoteEditorOptions<any, any, any>>
+  protected constructor(
+    protected readonly options: Partial<BlockNoteEditorOptions<any, any, any>>
   ) {
     const anyOpts = options as any;
     if (anyOpts.onEditorContentChange) {
@@ -218,11 +411,18 @@ export class BlockNoteEditor<
       );
     }
 
+    this.dictionary = options.dictionary || en;
+
     // apply defaults
     const newOptions = {
       defaultStyles: true,
       schema: options.schema || BlockNoteSchema.create(),
+      _headless: false,
       ...options,
+      placeholders: {
+        ...this.dictionary.placeholders,
+        ...options.placeholders,
+      },
     };
 
     // @ts-ignore
@@ -231,48 +431,70 @@ export class BlockNoteEditor<
     this.inlineContentImplementations = newOptions.schema.inlineContentSpecs;
     this.styleImplementations = newOptions.schema.styleSpecs;
 
-    this.formattingToolbar = new FormattingToolbarProsemirrorPlugin(this);
-    this.hyperlinkToolbar = new HyperlinkToolbarProsemirrorPlugin(this);
-    this.sideMenu = new SideMenuProsemirrorPlugin(this);
-    this.suggestionMenus = new SuggestionMenuProseMirrorPlugin(this);
-    if (checkDefaultBlockTypeInSchema("image", this)) {
-      // Type guards only work on `const`s? Not working for `this`
-      this.imageToolbar = new ImageToolbarProsemirrorPlugin(this as any);
-    }
-    if (checkDefaultBlockTypeInSchema("table", this)) {
-      this.tableHandles = new TableHandlesProsemirrorPlugin(this as any);
-    }
-
-    const extensions = getBlockNoteExtensions({
+    this.extensions = getBlockNoteExtensions({
       editor: this,
-      placeholders: newOptions.placeholders,
       domAttributes: newOptions.domAttributes || {},
-      blockSchema: this.schema.blockSchema,
       blockSpecs: this.schema.blockSpecs,
       styleSpecs: this.schema.styleSpecs,
       inlineContentSpecs: this.schema.inlineContentSpecs,
       collaboration: newOptions.collaboration,
+      trailingBlock: newOptions.trailingBlock,
+      disableExtensions: newOptions.disableExtensions,
+      setIdAttribute: newOptions.setIdAttribute,
+      animations: newOptions.animations ?? true,
+      tableHandles: checkDefaultBlockTypeInSchema("table", this),
+      dropCursor: this.options.dropCursor ?? dropCursor,
+      placeholders: newOptions.placeholders,
+      tabBehavior: newOptions.tabBehavior,
+      sideMenuDetection: newOptions.sideMenuDetection || "viewport",
     });
 
-    const blockNoteUIExtension = Extension.create({
-      name: "BlockNoteUIExtension",
-
-      addProseMirrorPlugins: () => {
-        return [
-          this.formattingToolbar.plugin,
-          this.hyperlinkToolbar.plugin,
-          this.sideMenu.plugin,
-          this.suggestionMenus.plugin,
-          ...(this.imageToolbar ? [this.imageToolbar.plugin] : []),
-          ...(this.tableHandles ? [this.tableHandles.plugin] : []),
-        ];
-      },
+    // add extensions from _tiptapOptions
+    (newOptions._tiptapOptions?.extensions || []).forEach((ext) => {
+      this.extensions[ext.name] = ext;
     });
-    extensions.push(blockNoteUIExtension);
 
-    this.uploadFile = newOptions.uploadFile;
+    // add extensions from options
+    Object.entries(newOptions._extensions || {}).forEach(([key, ext]) => {
+      if (typeof ext === "function") {
+        // factory
+        ext = ext(this);
+      }
+      this.extensions[key] = ext;
+    });
 
-    if (newOptions.collaboration && newOptions.initialContent) {
+    this.formattingToolbar = this.extensions["formattingToolbar"] as any;
+    this.linkToolbar = this.extensions["linkToolbar"] as any;
+    this.sideMenu = this.extensions["sideMenu"] as any;
+    this.suggestionMenus = this.extensions["suggestionMenus"] as any;
+    this.filePanel = this.extensions["filePanel"] as any;
+    this.tableHandles = this.extensions["tableHandles"] as any;
+
+    if (newOptions.uploadFile) {
+      const uploadFile = newOptions.uploadFile;
+      this.uploadFile = async (file, block) => {
+        this.onUploadStartCallbacks.forEach((callback) =>
+          callback.apply(this, [block])
+        );
+        try {
+          return await uploadFile(file, block);
+        } finally {
+          this.onUploadEndCallbacks.forEach((callback) =>
+            callback.apply(this, [block])
+          );
+        }
+      };
+    }
+
+    this.resolveFileUrl = newOptions.resolveFileUrl;
+    this.headless = newOptions._headless;
+
+    const collaborationEnabled =
+      "collaboration" in this.extensions ||
+      "liveblocksExtension" in this.extensions;
+
+    if (collaborationEnabled && newOptions.initialContent) {
+      // eslint-disable-next-line no-console
       console.warn(
         "When using Collaboration, initialContent might cause conflicts, because changes should come from the collaboration provider"
       );
@@ -280,7 +502,7 @@ export class BlockNoteEditor<
 
     const initialContent =
       newOptions.initialContent ||
-      (options.collaboration
+      (collaborationEnabled
         ? [
             {
               type: "paragraph",
@@ -301,17 +523,42 @@ export class BlockNoteEditor<
       );
     }
 
+    const tiptapExtensions = [
+      ...Object.entries(this.extensions).map(([key, ext]) => {
+        if (
+          ext instanceof Extension ||
+          ext instanceof TipTapNode ||
+          ext instanceof Mark
+        ) {
+          // tiptap extension
+          return ext;
+        }
+
+        if (!ext.plugin) {
+          throw new Error(
+            "Extension should either be a TipTap extension or a ProseMirror plugin in a plugin property"
+          );
+        }
+
+        // "blocknote" extensions (prosemirror plugins)
+        return Extension.create({
+          name: key,
+          addProseMirrorPlugins: () => [ext.plugin],
+        });
+      }),
+    ];
     const tiptapOptions: BlockNoteTipTapEditorOptions = {
       ...blockNoteTipTapOptions,
       ...newOptions._tiptapOptions,
       content: initialContent,
-      extensions:
-        newOptions.enableBlockNoteExtensions === false
-          ? newOptions._tiptapOptions?.extensions || []
-          : [...(newOptions._tiptapOptions?.extensions || []), ...extensions],
+      extensions: tiptapExtensions,
       editorProps: {
         ...newOptions._tiptapOptions?.editorProps,
         attributes: {
+          // As of TipTap v2.5.0 the tabIndex is removed when the editor is not
+          // editable, so you can't focus it. We want to revert this as we have
+          // UI behaviour that relies on it.
+          tabIndex: "0",
           ...newOptions._tiptapOptions?.editorProps?.attributes,
           ...newOptions.domAttributes?.editor,
           class: mergeCSSClasses(
@@ -324,44 +571,81 @@ export class BlockNoteEditor<
       },
     };
 
-    this._tiptapEditor = new BlockNoteTipTapEditor(
-      tiptapOptions,
-      this.schema.styleSchema
-    ) as BlockNoteTipTapEditor & {
-      contentComponent: any;
-    };
+    if (!this.headless) {
+      this._tiptapEditor = BlockNoteTipTapEditor.create(
+        tiptapOptions,
+        this.schema.styleSchema
+      ) as BlockNoteTipTapEditor & {
+        view: any;
+        contentComponent: any;
+      };
+      this._pmSchema = this._tiptapEditor.schema;
+    } else {
+      // In headless mode, we don't instantiate an underlying TipTap editor,
+      // but we still need the schema
+      this._pmSchema = getSchema(tiptapOptions.extensions!);
+    }
+  }
+
+  dispatch(tr: Transaction) {
+    this._tiptapEditor.dispatch(tr);
   }
 
   /**
    * Mount the editor to a parent DOM element. Call mount(undefined) to clean up
    *
-   * @warning Not needed for React, use BlockNoteView to take care of this
+   * @warning Not needed to call manually when using React, use BlockNoteView to take care of mounting
    */
-  public mount(parentElement?: HTMLElement | null) {
-    this._tiptapEditor.mount(parentElement);
-  }
+  public mount = (
+    parentElement?: HTMLElement | null,
+    contentComponent?: any
+  ) => {
+    this._tiptapEditor.mount(parentElement, contentComponent);
+  };
 
   public get prosemirrorView() {
     return this._tiptapEditor.view;
   }
 
   public get domElement() {
-    return this._tiptapEditor.view.dom as HTMLDivElement;
+    return this.prosemirrorView?.dom as HTMLDivElement | undefined;
   }
 
   public isFocused() {
-    return this._tiptapEditor.view.hasFocus();
+    return this.prosemirrorView?.hasFocus() || false;
   }
 
   public focus() {
-    this._tiptapEditor.view.focus();
+    this.prosemirrorView?.focus();
+  }
+
+  public onUploadStart(callback: (blockId?: string) => void) {
+    this.onUploadStartCallbacks.push(callback);
+
+    return () => {
+      const index = this.onUploadStartCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.onUploadStartCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  public onUploadEnd(callback: (blockId?: string) => void) {
+    this.onUploadEndCallbacks.push(callback);
+
+    return () => {
+      const index = this.onUploadEndCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.onUploadEndCallbacks.splice(index, 1);
+      }
+    };
   }
 
   /**
    * @deprecated, use `editor.document` instead
    */
   public get topLevelBlocks(): Block<BSchema, ISchema, SSchema>[] {
-    return this.topLevelBlocks;
+    return this.document;
   }
 
   /**
@@ -390,39 +674,57 @@ export class BlockNoteEditor<
 
   /**
    * Gets a snapshot of an existing block from the editor.
-   * @param blockIdentifier The identifier of an existing block that should be retrieved.
-   * @returns The block that matches the identifier, or `undefined` if no matching block was found.
+   * @param blockIdentifier The identifier of an existing block that should be
+   * retrieved.
+   * @returns The block that matches the identifier, or `undefined` if no
+   * matching block was found.
    */
   public getBlock(
     blockIdentifier: BlockIdentifier
   ): Block<BSchema, ISchema, SSchema> | undefined {
-    const id =
-      typeof blockIdentifier === "string"
-        ? blockIdentifier
-        : blockIdentifier.id;
-    let newBlock: Block<BSchema, ISchema, SSchema> | undefined = undefined;
+    return getBlock(this, blockIdentifier);
+  }
 
-    this._tiptapEditor.state.doc.firstChild!.descendants((node) => {
-      if (typeof newBlock !== "undefined") {
-        return false;
-      }
+  /**
+   * Gets a snapshot of the previous sibling of an existing block from the
+   * editor.
+   * @param blockIdentifier The identifier of an existing block for which the
+   * previous sibling should be retrieved.
+   * @returns The previous sibling of the block that matches the identifier.
+   * `undefined` if no matching block was found, or it's the first child/block
+   * in the document.
+   */
+  public getPrevBlock(
+    blockIdentifier: BlockIdentifier
+  ): Block<BSchema, ISchema, SSchema> | undefined {
+    return getPrevBlock(this, blockIdentifier);
+  }
 
-      if (node.type.name !== "blockContainer" || node.attrs.id !== id) {
-        return true;
-      }
+  /**
+   * Gets a snapshot of the next sibling of an existing block from the editor.
+   * @param blockIdentifier The identifier of an existing block for which the
+   * next sibling should be retrieved.
+   * @returns The next sibling of the block that matches the identifier.
+   * `undefined` if no matching block was found, or it's the last child/block in
+   * the document.
+   */
+  public getNextBlock(
+    blockIdentifier: BlockIdentifier
+  ): Block<BSchema, ISchema, SSchema> | undefined {
+    return getNextBlock(this, blockIdentifier);
+  }
 
-      newBlock = nodeToBlock(
-        node,
-        this.schema.blockSchema,
-        this.schema.inlineContentSchema,
-        this.schema.styleSchema,
-        this.blockCache
-      );
-
-      return false;
-    });
-
-    return newBlock;
+  /**
+   * Gets a snapshot of the parent of an existing block from the editor.
+   * @param blockIdentifier The identifier of an existing block for which the
+   * parent should be retrieved.
+   * @returns The parent of the block that matches the identifier. `undefined`
+   * if no matching block was found, or the block isn't nested.
+   */
+  public getParentBlock(
+    blockIdentifier: BlockIdentifier
+  ): Block<BSchema, ISchema, SSchema> | undefined {
+    return getParentBlock(this, blockIdentifier);
   }
 
   /**
@@ -444,7 +746,7 @@ export class BlockNoteEditor<
       blockArray: Block<BSchema, ISchema, SSchema>[]
     ): boolean {
       for (const block of blockArray) {
-        if (!callback(block)) {
+        if (callback(block) === false) {
           return false;
         }
 
@@ -488,61 +790,7 @@ export class BlockNoteEditor<
     ISchema,
     SSchema
   > {
-    const { node, depth, startPos, endPos } = getBlockInfoFromPos(
-      this._tiptapEditor.state.doc,
-      this._tiptapEditor.state.selection.from
-    )!;
-
-    // Index of the current blockContainer node relative to its parent blockGroup.
-    const nodeIndex = this._tiptapEditor.state.doc
-      .resolve(endPos)
-      .index(depth - 1);
-    // Number of the parent blockGroup's child blockContainer nodes.
-    const numNodes = this._tiptapEditor.state.doc
-      .resolve(endPos + 1)
-      .node().childCount;
-
-    // Gets previous blockContainer node at the same nesting level, if the current node isn't the first child.
-    let prevNode: Node | undefined = undefined;
-    if (nodeIndex > 0) {
-      prevNode = this._tiptapEditor.state.doc.resolve(startPos - 2).node();
-    }
-
-    // Gets next blockContainer node at the same nesting level, if the current node isn't the last child.
-    let nextNode: Node | undefined = undefined;
-    if (nodeIndex < numNodes - 1) {
-      nextNode = this._tiptapEditor.state.doc.resolve(endPos + 2).node();
-    }
-
-    return {
-      block: nodeToBlock(
-        node,
-        this.schema.blockSchema,
-        this.schema.inlineContentSchema,
-        this.schema.styleSchema,
-        this.blockCache
-      ),
-      prevBlock:
-        prevNode === undefined
-          ? undefined
-          : nodeToBlock(
-              prevNode,
-              this.schema.blockSchema,
-              this.schema.inlineContentSchema,
-              this.schema.styleSchema,
-              this.blockCache
-            ),
-      nextBlock:
-        nextNode === undefined
-          ? undefined
-          : nodeToBlock(
-              nextNode,
-              this.schema.blockSchema,
-              this.schema.inlineContentSchema,
-              this.schema.styleSchema,
-              this.blockCache
-            ),
-    };
+    return getTextCursorPosition(this);
   }
 
   /**
@@ -555,90 +803,18 @@ export class BlockNoteEditor<
     targetBlock: BlockIdentifier,
     placement: "start" | "end" = "start"
   ) {
-    const id = typeof targetBlock === "string" ? targetBlock : targetBlock.id;
-
-    const { posBeforeNode } = getNodeById(id, this._tiptapEditor.state.doc);
-    const { startPos, contentNode } = getBlockInfoFromPos(
-      this._tiptapEditor.state.doc,
-      posBeforeNode + 2
-    )!;
-
-    const contentType: "none" | "inline" | "table" =
-      this.schema.blockSchema[contentNode.type.name]!.content;
-
-    if (contentType === "none") {
-      this._tiptapEditor.commands.setNodeSelection(startPos);
-      return;
-    }
-
-    if (contentType === "inline") {
-      if (placement === "start") {
-        this._tiptapEditor.commands.setTextSelection(startPos + 1);
-      } else {
-        this._tiptapEditor.commands.setTextSelection(
-          startPos + contentNode.nodeSize - 1
-        );
-      }
-    } else if (contentType === "table") {
-      if (placement === "start") {
-        // Need to offset the position as we have to get through the `tableRow`
-        // and `tableCell` nodes to get to the `tableParagraph` node we want to
-        // set the selection in.
-        this._tiptapEditor.commands.setTextSelection(startPos + 4);
-      } else {
-        this._tiptapEditor.commands.setTextSelection(
-          startPos + contentNode.nodeSize - 4
-        );
-      }
-    } else {
-      throw new UnreachableCaseError(contentType);
-    }
+    setTextCursorPosition(this, targetBlock, placement);
   }
 
   /**
    * Gets a snapshot of the current selection.
    */
   public getSelection(): Selection<BSchema, ISchema, SSchema> | undefined {
-    // Either the TipTap selection is empty, or it's a node selection. In either
-    // case, it only spans one block, so we return undefined.
-    if (
-      this._tiptapEditor.state.selection.from ===
-        this._tiptapEditor.state.selection.to ||
-      "node" in this._tiptapEditor.state.selection
-    ) {
-      return undefined;
-    }
+    return getSelection(this);
+  }
 
-    const blocks: Block<BSchema, ISchema, SSchema>[] = [];
-
-    // TODO: This adds all child blocks to the same array. Needs to find min
-    //  depth and only add blocks at that depth.
-    this._tiptapEditor.state.doc.descendants((node, pos) => {
-      if (node.type.spec.group !== "blockContent") {
-        return true;
-      }
-
-      if (
-        pos + node.nodeSize < this._tiptapEditor.state.selection.from ||
-        pos > this._tiptapEditor.state.selection.to
-      ) {
-        return true;
-      }
-
-      blocks.push(
-        nodeToBlock(
-          this._tiptapEditor.state.doc.resolve(pos).node(),
-          this.schema.blockSchema,
-          this.schema.inlineContentSchema,
-          this.schema.styleSchema,
-          this.blockCache
-        )
-      );
-
-      return false;
-    });
-
-    return { blocks: blocks };
+  public setSelection(startBlock: BlockIdentifier, endBlock: BlockIdentifier) {
+    setSelection(this, startBlock, endBlock);
   }
 
   /**
@@ -646,7 +822,15 @@ export class BlockNoteEditor<
    * @returns True if the editor is editable, false otherwise.
    */
   public get isEditable(): boolean {
-    return this._tiptapEditor.isEditable;
+    if (!this._tiptapEditor) {
+      if (!this.headless) {
+        throw new Error("no editor, but also not headless?");
+      }
+      return false;
+    }
+    return this._tiptapEditor.isEditable === undefined
+      ? true
+      : this._tiptapEditor.isEditable;
   }
 
   /**
@@ -654,7 +838,16 @@ export class BlockNoteEditor<
    * @param editable True to make the editor editable, or false to lock it.
    */
   public set isEditable(editable: boolean) {
-    this._tiptapEditor.setEditable(editable);
+    if (!this._tiptapEditor) {
+      if (!this.headless) {
+        throw new Error("no editor, but also not headless?");
+      }
+      // not relevant on headless
+      return;
+    }
+    if (this._tiptapEditor.options.editable !== editable) {
+      this._tiptapEditor.setEditable(editable);
+    }
   }
 
   /**
@@ -663,14 +856,14 @@ export class BlockNoteEditor<
    * @param blocksToInsert An array of partial blocks that should be inserted.
    * @param referenceBlock An identifier for an existing block, at which the new blocks should be inserted.
    * @param placement Whether the blocks should be inserted just before, just after, or nested inside the
-   * `referenceBlock`. Inserts the blocks at the start of the existing block's children if "nested" is used.
+   * `referenceBlock`.
    */
   public insertBlocks(
     blocksToInsert: PartialBlock<BSchema, ISchema, SSchema>[],
     referenceBlock: BlockIdentifier,
-    placement: "before" | "after" | "nested" = "before"
+    placement: "before" | "after" = "before"
   ) {
-    return insertBlocks(blocksToInsert, referenceBlock, placement, this);
+    return insertBlocks(this, blocksToInsert, referenceBlock, placement);
   }
 
   /**
@@ -684,7 +877,7 @@ export class BlockNoteEditor<
     blockToUpdate: BlockIdentifier,
     update: PartialBlock<BSchema, ISchema, SSchema>
   ) {
-    return updateBlock(blockToUpdate, update, this);
+    return updateBlock(this, blockToUpdate, update);
   }
 
   /**
@@ -692,7 +885,7 @@ export class BlockNoteEditor<
    * @param blocksToRemove An array of identifiers for existing blocks that should be removed.
    */
   public removeBlocks(blocksToRemove: BlockIdentifier[]) {
-    return removeBlocks(blocksToRemove, this);
+    return removeBlocks(this, blocksToRemove);
   }
 
   /**
@@ -706,7 +899,7 @@ export class BlockNoteEditor<
     blocksToRemove: BlockIdentifier[],
     blocksToInsert: PartialBlock<BSchema, ISchema, SSchema>[]
   ) {
-    return replaceBlocks(blocksToRemove, blocksToInsert, this);
+    return replaceBlocks(this, blocksToRemove, blocksToInsert);
   }
 
   /**
@@ -717,7 +910,7 @@ export class BlockNoteEditor<
   public insertInlineContent(content: PartialInlineContent<ISchema, SSchema>) {
     const nodes = inlineContentToNodes(
       content,
-      this._tiptapEditor.schema,
+      this.pmSchema,
       this.schema.styleSchema
     );
 
@@ -741,7 +934,16 @@ export class BlockNoteEditor<
     for (const mark of marks) {
       const config = this.schema.styleSchema[mark.type.name];
       if (!config) {
-        console.warn("mark not found in styleschema", mark.type.name);
+        if (
+          // Links are not considered styles in blocknote
+          mark.type.name !== "link" &&
+          // "blocknoteIgnore" tagged marks (such as comments) are also not considered BlockNote "styles"
+          !mark.type.spec.blocknoteIgnore
+        ) {
+          // eslint-disable-next-line no-console
+          console.warn("mark not found in styleschema", mark.type.name);
+        }
+
         continue;
       }
       if (config.propSchema === "boolean") {
@@ -759,8 +961,6 @@ export class BlockNoteEditor<
    * @param styles The styles to add.
    */
   public addStyles(styles: Styles<SSchema>) {
-    this._tiptapEditor.view.focus();
-
     for (const [style, value] of Object.entries(styles)) {
       const config = this.schema.styleSchema[style];
       if (!config) {
@@ -781,8 +981,6 @@ export class BlockNoteEditor<
    * @param styles The styles to remove.
    */
   public removeStyles(styles: Styles<SSchema>) {
-    this._tiptapEditor.view.focus();
-
     for (const style of Object.keys(styles)) {
       this._tiptapEditor.commands.unsetMark(style);
     }
@@ -793,8 +991,6 @@ export class BlockNoteEditor<
    * @param styles The styles to toggle.
    */
   public toggleStyles(styles: Styles<SSchema>) {
-    this._tiptapEditor.view.focus();
-
     for (const [style, value] of Object.entries(styles)) {
       const config = this.schema.styleSchema[style];
       if (!config) {
@@ -843,10 +1039,10 @@ export class BlockNoteEditor<
       text = this._tiptapEditor.state.doc.textBetween(from, to);
     }
 
-    const mark = this._tiptapEditor.schema.mark("link", { href: url });
+    const mark = this.pmSchema.mark("link", { href: url });
 
-    this._tiptapEditor.view.dispatch(
-      this._tiptapEditor.view.state.tr
+    this.dispatch(
+      this._tiptapEditor.state.tr
         .insertText(text, from, to)
         .addMark(from, from + text.length, mark)
     );
@@ -856,57 +1052,77 @@ export class BlockNoteEditor<
    * Checks if the block containing the text cursor can be nested.
    */
   public canNestBlock() {
-    const { startPos, depth } = getBlockInfoFromPos(
-      this._tiptapEditor.state.doc,
-      this._tiptapEditor.state.selection.from
-    )!;
-
-    return this._tiptapEditor.state.doc.resolve(startPos).index(depth - 1) > 0;
+    return canNestBlock(this);
   }
 
   /**
    * Nests the block containing the text cursor into the block above it.
    */
   public nestBlock() {
-    this._tiptapEditor.commands.sinkListItem("blockContainer");
+    nestBlock(this);
   }
 
   /**
    * Checks if the block containing the text cursor is nested.
    */
   public canUnnestBlock() {
-    const { depth } = getBlockInfoFromPos(
-      this._tiptapEditor.state.doc,
-      this._tiptapEditor.state.selection.from
-    )!;
-
-    return depth > 2;
+    return canUnnestBlock(this);
   }
 
   /**
    * Lifts the block containing the text cursor out of its parent.
    */
   public unnestBlock() {
-    this._tiptapEditor.commands.liftListItem("blockContainer");
+    unnestBlock(this);
   }
 
-  // TODO: Fix when implementing HTML/Markdown import & export
   /**
-   * Serializes blocks into an HTML string. To better conform to HTML standards, children of blocks which aren't list
+   * Moves the selected blocks up. If the previous block has children, moves
+   * them to the end of its children. If there is no previous block, but the
+   * current blocks share a common parent, moves them out of & before it.
+   */
+  public moveBlocksUp() {
+    moveBlocksUp(this);
+  }
+
+  /**
+   * Moves the selected blocks down. If the next block has children, moves
+   * them to the start of its children. If there is no next block, but the
+   * current blocks share a common parent, moves them out of & after it.
+   */
+  public moveBlocksDown() {
+    moveBlocksDown(this);
+  }
+
+  /**
+   * Exports blocks into a simplified HTML string. To better conform to HTML standards, children of blocks which aren't list
    * items are un-nested in the output HTML.
+   *
    * @param blocks An array of blocks that should be serialized into HTML.
    * @returns The blocks, serialized as an HTML string.
    */
   public async blocksToHTMLLossy(
-    blocks: Block<BSchema, ISchema, SSchema>[] = this.document
+    blocks: PartialBlock<BSchema, ISchema, SSchema>[] = this.document
   ): Promise<string> {
-    const exporter = createExternalHTMLExporter(
-      this._tiptapEditor.schema,
-      this
-    );
-    return exporter.exportBlocks(blocks);
+    const exporter = createExternalHTMLExporter(this.pmSchema, this);
+    return exporter.exportBlocks(blocks, {});
   }
 
+  /**
+   * Serializes blocks into an HTML string in the format that would normally be rendered by the editor.
+   *
+   * Use this method if you want to server-side render HTML (for example, a blog post that has been edited in BlockNote)
+   * and serve it to users without loading the editor on the client (i.e.: displaying the blog post)
+   *
+   * @param blocks An array of blocks that should be serialized into HTML.
+   * @returns The blocks, serialized as an HTML string.
+   */
+  public async blocksToFullHTML(
+    blocks: PartialBlock<BSchema, ISchema, SSchema>[]
+  ): Promise<string> {
+    const exporter = createInternalHTMLSerializer(this.pmSchema, this);
+    return exporter.serializeBlocks(blocks, {});
+  }
   /**
    * Parses blocks from an HTML string. Tries to create `Block` objects out of any HTML block-level elements, and
    * `InlineNode` objects from any HTML inline elements, though not all element types are recognized. If BlockNote
@@ -922,7 +1138,7 @@ export class BlockNoteEditor<
       this.schema.blockSchema,
       this.schema.inlineContentSchema,
       this.schema.styleSchema,
-      this._tiptapEditor.schema
+      this.pmSchema
     );
   }
 
@@ -933,9 +1149,9 @@ export class BlockNoteEditor<
    * @returns The blocks, serialized as a Markdown string.
    */
   public async blocksToMarkdownLossy(
-    blocks: Block<BSchema, ISchema, SSchema>[] = this.document
+    blocks: PartialBlock<BSchema, ISchema, SSchema>[] = this.document
   ): Promise<string> {
-    return blocksToMarkdown(blocks, this._tiptapEditor.schema, this);
+    return blocksToMarkdown(blocks, this.pmSchema, this, {});
   }
 
   /**
@@ -953,7 +1169,7 @@ export class BlockNoteEditor<
       this.schema.blockSchema,
       this.schema.inlineContentSchema,
       this.schema.styleSchema,
-      this._tiptapEditor.schema
+      this.pmSchema
     );
   }
 
@@ -978,6 +1194,11 @@ export class BlockNoteEditor<
   public onChange(
     callback: (editor: BlockNoteEditor<BSchema, ISchema, SSchema>) => void
   ) {
+    if (this.headless) {
+      // Note: would be nice if this is possible in headless mode as well
+      return;
+    }
+
     const cb = () => {
       callback(this);
     };
@@ -998,6 +1219,10 @@ export class BlockNoteEditor<
   public onSelectionChange(
     callback: (editor: BlockNoteEditor<BSchema, ISchema, SSchema>) => void
   ) {
+    if (this.headless) {
+      return;
+    }
+
     const cb = () => {
       callback(this);
     };
@@ -1007,5 +1232,32 @@ export class BlockNoteEditor<
     return () => {
       this._tiptapEditor.off("selectionUpdate", cb);
     };
+  }
+
+  public openSuggestionMenu(
+    triggerCharacter: string,
+    pluginState?: {
+      deleteTriggerCharacter?: boolean;
+      ignoreQueryLength?: boolean;
+    }
+  ) {
+    const tr = this.prosemirrorView?.state.tr;
+    if (!tr) {
+      return;
+    }
+
+    const transaction =
+      pluginState && pluginState.deleteTriggerCharacter
+        ? tr.insertText(triggerCharacter)
+        : tr;
+
+    this.prosemirrorView.focus();
+    this.prosemirrorView.dispatch(
+      transaction.scrollIntoView().setMeta(this.suggestionMenus.plugin, {
+        triggerCharacter: triggerCharacter,
+        deleteTriggerCharacter: pluginState?.deleteTriggerCharacter || false,
+        ignoreQueryLength: pluginState?.ignoreQueryLength || false,
+      })
+    );
   }
 }

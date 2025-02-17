@@ -5,7 +5,6 @@ import {
   StyleSchema,
   mergeCSSClasses,
 } from "@blocknote/core";
-import { MantineProvider } from "@mantine/core";
 
 import React, {
   HTMLAttributes,
@@ -16,70 +15,60 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import usePrefersColorScheme from "use-prefers-color-scheme";
-import { useEditorChange } from "../hooks/useEditorChange";
-import { useEditorSelectionChange } from "../hooks/useEditorSelectionChange";
-import { mergeRefs } from "../util/mergeRefs";
-import { BlockNoteContext, useBlockNoteContext } from "./BlockNoteContext";
+import { useEditorChange } from "../hooks/useEditorChange.js";
+import { useEditorSelectionChange } from "../hooks/useEditorSelectionChange.js";
+import { usePrefersColorScheme } from "../hooks/usePrefersColorScheme.js";
+import { BlockNoteContext, useBlockNoteContext } from "./BlockNoteContext.js";
 import {
   BlockNoteDefaultUI,
   BlockNoteDefaultUIProps,
-} from "./BlockNoteDefaultUI";
-import {
-  Theme,
-  applyBlockNoteCSSVariablesFromTheme,
-  removeBlockNoteCSSVariables,
-} from "./BlockNoteTheme";
-import { EditorContent } from "./EditorContent";
+} from "./BlockNoteDefaultUI.js";
+import { Portals, getContentComponent } from "./EditorContent.js";
+import { ElementRenderer } from "./ElementRenderer.js";
 import "./styles.css";
-
-const mantineTheme = {
-  // Removes button press effect
-  activeClassName: "",
-};
 
 const emptyFn = () => {
   // noop
 };
+
+export type BlockNoteViewProps<
+  BSchema extends BlockSchema,
+  ISchema extends InlineContentSchema,
+  SSchema extends StyleSchema
+> = {
+  editor: BlockNoteEditor<BSchema, ISchema, SSchema>;
+
+  theme?: "light" | "dark";
+
+  /**
+   * Locks the editor from being editable by the user if set to `false`.
+   */
+  editable?: boolean;
+  /**
+   * A callback function that runs whenever the text cursor position or selection changes.
+   */
+  onSelectionChange?: () => void;
+
+  /**
+   * A callback function that runs whenever the editor's contents change.
+   */
+  onChange?: () => void;
+
+  children?: ReactNode;
+
+  ref?: Ref<HTMLDivElement> | undefined; // only here to get types working with the generics. Regular form doesn't work
+} & Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "onChange" | "onSelectionChange" | "children"
+> &
+  BlockNoteDefaultUIProps;
 
 function BlockNoteViewComponent<
   BSchema extends BlockSchema,
   ISchema extends InlineContentSchema,
   SSchema extends StyleSchema
 >(
-  props: {
-    editor: BlockNoteEditor<BSchema, ISchema, SSchema>;
-
-    theme?:
-      | "light"
-      | "dark"
-      | Theme
-      | {
-          light: Theme;
-          dark: Theme;
-        };
-    /**
-     * Locks the editor from being editable by the user if set to `false`.
-     */
-    editable?: boolean;
-    /**
-     * A callback function that runs whenever the text cursor position or selection changes.
-     */
-    onSelectionChange?: () => void;
-
-    /**
-     * A callback function that runs whenever the editor's contents change.
-     */
-    onChange?: () => void;
-
-    children?: ReactNode;
-
-    ref?: Ref<HTMLDivElement> | undefined; // only here to get types working with the generics. Regular form doesn't work
-  } & Omit<
-    HTMLAttributes<HTMLDivElement>,
-    "onChange" | "onSelectionChange" | "children"
-  > &
-    BlockNoteDefaultUIProps,
+  props: BlockNoteViewProps<BSchema, ISchema, SSchema>,
   ref: React.Ref<HTMLDivElement>
 ) {
   const {
@@ -91,64 +80,27 @@ function BlockNoteViewComponent<
     onSelectionChange,
     onChange,
     formattingToolbar,
-    hyperlinkToolbar,
+    linkToolbar,
     slashMenu,
+    emojiPicker,
     sideMenu,
-    imageToolbar,
+    filePanel,
     tableHandles,
     ...rest
   } = props;
 
-  const existingContext = useBlockNoteContext();
+  // Used so other components (suggestion menu) can set
+  // aria related props to the contenteditable div
+  const [contentEditableProps, setContentEditableProps] =
+    useState<Record<string, any>>();
 
+  const existingContext = useBlockNoteContext();
   const systemColorScheme = usePrefersColorScheme();
   const defaultColorScheme =
     existingContext?.colorSchemePreference || systemColorScheme;
 
-  const [editorColorScheme, setEditorColorScheme] = useState<
-    "light" | "dark" | undefined
-  >(undefined);
-
-  const containerRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (!node) {
-        // todo: clean variables?
-        return;
-      }
-
-      removeBlockNoteCSSVariables(node);
-
-      if (theme === "light") {
-        setEditorColorScheme("light");
-        return;
-      }
-
-      if (theme === "dark") {
-        setEditorColorScheme("dark");
-        return;
-      }
-
-      if (typeof theme === "object") {
-        if ("light" in theme && "dark" in theme) {
-          applyBlockNoteCSSVariablesFromTheme(
-            theme[defaultColorScheme === "dark" ? "dark" : "light"],
-            node
-          );
-          setEditorColorScheme(
-            defaultColorScheme === "dark" ? "dark" : "light"
-          );
-          return;
-        }
-
-        applyBlockNoteCSSVariablesFromTheme(theme, node);
-        setEditorColorScheme(undefined);
-        return;
-      }
-
-      setEditorColorScheme(defaultColorScheme === "dark" ? "dark" : "light");
-    },
-    [defaultColorScheme, theme]
-  );
+  const editorColorScheme =
+    theme || (defaultColorScheme === "dark" ? "dark" : "light");
 
   useEditorChange(onChange || emptyFn, editor);
   useEditorSelectionChange(onSelectionChange || emptyFn, editor);
@@ -163,10 +115,11 @@ function BlockNoteViewComponent<
         {children}
         <BlockNoteDefaultUI
           formattingToolbar={formattingToolbar}
-          hyperlinkToolbar={hyperlinkToolbar}
+          linkToolbar={linkToolbar}
           slashMenu={slashMenu}
+          emojiPicker={emojiPicker}
           sideMenu={sideMenu}
-          imageToolbar={imageToolbar}
+          filePanel={filePanel}
           tableHandles={tableHandles}
         />
       </>
@@ -174,10 +127,11 @@ function BlockNoteViewComponent<
   }, [
     children,
     formattingToolbar,
-    hyperlinkToolbar,
-    imageToolbar,
-    sideMenu,
+    linkToolbar,
     slashMenu,
+    emojiPicker,
+    sideMenu,
+    filePanel,
     tableHandles,
   ]);
 
@@ -185,32 +139,64 @@ function BlockNoteViewComponent<
     return {
       ...existingContext,
       editor,
+      setContentEditableProps,
     };
   }, [existingContext, editor]);
 
-  const refs = useMemo(() => {
-    return mergeRefs([containerRef, editor._tiptapEditor.mount, ref]);
-  }, [containerRef, editor._tiptapEditor.mount, ref]);
+  const setElementRenderer = useCallback(
+    (ref: (typeof editor)["elementRenderer"]) => {
+      editor.elementRenderer = ref;
+    },
+    [editor]
+  );
+
+  const portalManager = useMemo(() => {
+    return getContentComponent();
+  }, []);
+
+  const mount = useCallback(
+    (element: HTMLElement | null) => {
+      editor.mount(element, portalManager);
+    },
+    [editor, portalManager]
+  );
 
   return (
-    // `cssVariablesSelector` scopes Mantine CSS variables to only the editor,
-    // as proposed here:  https://github.com/orgs/mantinedev/discussions/5685
-    <MantineProvider theme={mantineTheme} cssVariablesSelector=".bn-container">
-      <BlockNoteContext.Provider value={context as any}>
-        <EditorContent editor={editor}>
+    <BlockNoteContext.Provider value={context as any}>
+      <ElementRenderer ref={setElementRenderer} />
+      {!editor.headless && (
+        <>
+          <Portals contentComponent={portalManager} />
           <div
-            className={mergeCSSClasses("bn-container", className || "")}
+            className={mergeCSSClasses(
+              "bn-container",
+              editorColorScheme || "",
+              className || ""
+            )}
             data-color-scheme={editorColorScheme}
             {...rest}
-            ref={refs}>
+            ref={ref}>
+            <div
+              aria-autocomplete="list"
+              aria-haspopup="listbox"
+              ref={mount}
+              {...contentEditableProps}
+            />
             {renderChildren}
           </div>
-        </EditorContent>
-      </BlockNoteContext.Provider>
-    </MantineProvider>
+        </>
+      )}
+    </BlockNoteContext.Provider>
   );
 }
 
-export const BlockNoteView = React.forwardRef(
-  BlockNoteViewComponent
-) as typeof BlockNoteViewComponent; // need hack to get types working with generics
+// https://fettblog.eu/typescript-react-generic-forward-refs/
+export const BlockNoteViewRaw = React.forwardRef(BlockNoteViewComponent) as <
+  BSchema extends BlockSchema,
+  ISchema extends InlineContentSchema,
+  SSchema extends StyleSchema
+>(
+  props: BlockNoteViewProps<BSchema, ISchema, SSchema> & {
+    ref?: React.ForwardedRef<HTMLDivElement>;
+  }
+) => ReturnType<typeof BlockNoteViewComponent<BSchema, ISchema, SSchema>>;

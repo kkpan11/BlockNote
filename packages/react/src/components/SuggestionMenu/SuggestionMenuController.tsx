@@ -5,16 +5,22 @@ import {
   SuggestionMenuState,
   filterSuggestionItems,
 } from "@blocknote/core";
-import { flip, offset, size } from "@floating-ui/react";
-import { FC } from "react";
+import {
+  UseFloatingOptions,
+  flip,
+  offset,
+  shift,
+  size,
+} from "@floating-ui/react";
+import { FC, useCallback, useMemo } from "react";
 
-import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor";
-import { useUIElementPositioning } from "../../hooks/useUIElementPositioning";
-import { useUIPluginState } from "../../hooks/useUIPluginState";
-import { SuggestionMenuWrapper } from "./SuggestionMenuWrapper";
-import { getDefaultReactSlashMenuItems } from "./getDefaultReactSlashMenuItems";
-import { SuggestionMenu } from "./mantine/SuggestionMenu";
-import { DefaultReactSuggestionItem, SuggestionMenuProps } from "./types";
+import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor.js";
+import { useUIElementPositioning } from "../../hooks/useUIElementPositioning.js";
+import { useUIPluginState } from "../../hooks/useUIPluginState.js";
+import { SuggestionMenu } from "./SuggestionMenu.js";
+import { SuggestionMenuWrapper } from "./SuggestionMenuWrapper.js";
+import { getDefaultReactSlashMenuItems } from "./getDefaultReactSlashMenuItems.js";
+import { DefaultReactSuggestionItem, SuggestionMenuProps } from "./types.js";
 
 type ArrayElement<A> = A extends readonly (infer T)[] ? T : never;
 
@@ -31,6 +37,8 @@ export function SuggestionMenuController<
   props: {
     triggerCharacter: string;
     getItems?: GetItemsType;
+    minQueryLength?: number;
+    floatingOptions?: Partial<UseFloatingOptions>;
   } & (ItemType<GetItemsType> extends DefaultReactSuggestionItem
     ? {
         // can be undefined
@@ -53,29 +61,50 @@ export function SuggestionMenuController<
     StyleSchema
   >();
 
-  const { triggerCharacter, suggestionMenuComponent } = props;
+  const {
+    triggerCharacter,
+    suggestionMenuComponent,
+    minQueryLength,
+    onItemClick,
+    getItems,
+    floatingOptions,
+  } = props;
 
-  let { onItemClick, getItems } = props;
+  const onItemClickOrDefault = useMemo(() => {
+    return (
+      onItemClick ||
+      ((item: ItemType<GetItemsType>) => {
+        item.onItemClick(editor);
+      })
+    );
+  }, [editor, onItemClick]);
 
-  if (!onItemClick) {
-    onItemClick = (item: ItemType<GetItemsType>) => {
-      item.onItemClick(editor);
-    };
-  }
+  const getItemsOrDefault = useMemo(() => {
+    return (
+      getItems ||
+      ((async (query: string) =>
+        filterSuggestionItems(
+          getDefaultReactSlashMenuItems(editor),
+          query
+        )) as any as typeof getItems)
+    );
+  }, [editor, getItems])!;
 
   const callbacks = {
     closeMenu: editor.suggestionMenus.closeMenu,
     clearQuery: editor.suggestionMenus.clearQuery,
   };
 
-  const state = useUIPluginState(
-    (callback: (state: SuggestionMenuState) => void) =>
-      editor.suggestionMenus.onUpdate.bind(editor.suggestionMenus)(
-        triggerCharacter,
-        callback
-      )
+  const cb = useCallback(
+    (callback: (state: SuggestionMenuState) => void) => {
+      return editor.suggestionMenus.onUpdate(triggerCharacter, callback);
+    },
+    [editor.suggestionMenus, triggerCharacter]
   );
-  const { isMounted, ref, style } = useUIElementPositioning(
+
+  const state = useUIPluginState(cb);
+
+  const { isMounted, ref, style, getFloatingProps } = useUIElementPositioning(
     state?.show || false,
     state?.referencePos || null,
     2000,
@@ -85,7 +114,11 @@ export function SuggestionMenuController<
         offset(10),
         // Flips the menu placement to maximize the space available, and prevents
         // the menu from being cut off by the confines of the screen.
-        flip(),
+        flip({
+          mainAxis: true,
+          crossAxis: false,
+        }),
+        shift(),
         size({
           apply({ availableHeight, elements }) {
             Object.assign(elements.floating.style, {
@@ -94,30 +127,34 @@ export function SuggestionMenuController<
           },
         }),
       ],
+      onOpenChange(open) {
+        if (!open) {
+          editor.suggestionMenus.closeMenu();
+        }
+      },
+      ...floatingOptions,
     }
   );
 
-  if (!isMounted || !state) {
+  if (
+    !isMounted ||
+    !state ||
+    (!state?.ignoreQueryLength &&
+      minQueryLength &&
+      (state.query.startsWith(" ") || state.query.length < minQueryLength))
+  ) {
     return null;
   }
 
-  if (!getItems) {
-    getItems = (async (query: string) =>
-      filterSuggestionItems(
-        getDefaultReactSlashMenuItems(editor),
-        query
-      )) as any;
-  }
-
   return (
-    <div ref={ref} style={style}>
+    <div ref={ref} style={style} {...getFloatingProps()}>
       <SuggestionMenuWrapper
         query={state.query}
         closeMenu={callbacks.closeMenu}
         clearQuery={callbacks.clearQuery}
-        getItems={getItems!}
+        getItems={getItemsOrDefault}
         suggestionMenuComponent={suggestionMenuComponent || SuggestionMenu}
-        onItemClick={onItemClick}
+        onItemClick={onItemClickOrDefault}
       />
     </div>
   );

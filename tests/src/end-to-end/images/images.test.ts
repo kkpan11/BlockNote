@@ -1,14 +1,14 @@
 import { FileChooser, expect } from "@playwright/test";
-import { test } from "../../setup/setupScript";
+import { test } from "../../setup/setupScript.js";
 import {
   BASE_URL,
   H_ONE_BLOCK_SELECTOR,
   IMAGE_SELECTOR,
-} from "../../utils/const";
-import { insertHeading } from "../../utils/copypaste";
-import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor";
-import { dragAndDropBlock } from "../../utils/mouse";
-import { executeSlashCommand } from "../../utils/slashmenu";
+} from "../../utils/const.js";
+import { insertHeading } from "../../utils/copypaste.js";
+import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor.js";
+import { dragAndDropBlock } from "../../utils/mouse.js";
+import { executeSlashCommand } from "../../utils/slashmenu.js";
 
 const IMAGE_UPLOAD_PATH = "src/end-to-end/images/placeholder.png";
 const IMAGE_EMBED_URL =
@@ -36,6 +36,7 @@ test.describe("Check Image Block and Toolbar functionality", () => {
     });
     await page.click(`[data-test="upload-input"]`);
     await page.waitForSelector(`img[src^="https://tmpfiles.org/"]`);
+    await page.waitForTimeout(500);
 
     await page.click(`img`);
 
@@ -51,6 +52,7 @@ test.describe("Check Image Block and Toolbar functionality", () => {
     await page.keyboard.type(IMAGE_EMBED_URL);
     await page.click(`[data-test="embed-input-button"]`);
     await page.waitForSelector(`img[src="${IMAGE_EMBED_URL}"]`);
+    await page.waitForTimeout(500);
 
     await page.click(`img`);
 
@@ -67,14 +69,13 @@ test.describe("Check Image Block and Toolbar functionality", () => {
     await page.keyboard.type(IMAGE_EMBED_URL);
     await page.click(`[data-test="embed-input-button"]`);
     await page.waitForSelector(`img[src="${IMAGE_EMBED_URL}"]`);
+    await page.waitForTimeout(500);
 
     await page.click(`img`);
 
-    await page.waitForSelector(
-      `[class*="bn-image-resize-handle"][style*="right"]`
-    );
+    await page.waitForSelector(`[class*="bn-resize-handle"][style*="right"]`);
     const resizeHandle = page.locator(
-      `[class*="bn-image-resize-handle"][style*="right"]`
+      `[class*="bn-resize-handle"][style*="right"]`
     );
     const resizeHandleBoundingBox = (await resizeHandle.boundingBox())!;
     await page.mouse.move(

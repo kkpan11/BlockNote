@@ -1,24 +1,32 @@
 import { InputRule } from "@tiptap/core";
+import { updateBlockCommand } from "../../../api/blockManipulation/commands/updateBlock/updateBlock.js";
+import { getBlockInfoFromSelection } from "../../../api/getBlockInfoFromPos.js";
 import {
   PropSchema,
   createBlockSpecFromStronglyTypedTiptapNode,
   createStronglyTypedTiptapNode,
-} from "../../../schema";
-import { createDefaultBlockDOMOutputSpec } from "../../defaultBlockHelpers";
-import { defaultProps } from "../../defaultProps";
-import { handleEnter } from "../ListItemKeyboardShortcuts";
-import { NumberedListIndexingPlugin } from "./NumberedListIndexingPlugin";
+  propsToAttributes,
+} from "../../../schema/index.js";
+import { createDefaultBlockDOMOutputSpec } from "../../defaultBlockHelpers.js";
+import { defaultProps } from "../../defaultProps.js";
+import { handleEnter } from "../ListItemKeyboardShortcuts.js";
+import { NumberedListIndexingPlugin } from "./NumberedListIndexingPlugin.js";
 
 export const numberedListItemPropSchema = {
   ...defaultProps,
+  start: { default: undefined, type: "number" },
 } satisfies PropSchema;
 
 const NumberedListItemBlockContent = createStronglyTypedTiptapNode({
   name: "numberedListItem",
   content: "inline*",
   group: "blockContent",
+  priority: 90,
   addAttributes() {
     return {
+      ...propsToAttributes(numberedListItemPropSchema),
+      // the index attribute is only used internally (it's not part of the blocknote schema)
+      // that's why it's defined explicitly here, and not part of the prop schema
       index: {
         default: null,
         parseHTML: (element) => element.getAttribute("data-index"),
@@ -35,13 +43,33 @@ const NumberedListItemBlockContent = createStronglyTypedTiptapNode({
     return [
       // Creates an ordered list when starting with "1.".
       new InputRule({
-        find: new RegExp(`^1\\.\\s$`),
-        handler: ({ state, chain, range }) => {
+        find: new RegExp(`^(\\d+)\\.\\s$`),
+        handler: ({ state, chain, range, match }) => {
+          const blockInfo = getBlockInfoFromSelection(state);
+          if (
+            !blockInfo.isBlockContainer ||
+            blockInfo.blockContent.node.type.spec.content !== "inline*" ||
+            blockInfo.blockNoteType === "numberedListItem"
+          ) {
+            return;
+          }
+          const startIndex = parseInt(match[1]);
+
           chain()
-            .BNUpdateBlock(state.selection.from, {
-              type: "numberedListItem",
-              props: {},
-            })
+            .command(
+              updateBlockCommand(
+                this.options.editor,
+                blockInfo.bnBlock.beforePos,
+                {
+                  type: "numberedListItem",
+                  props:
+                    (startIndex === 1 && {}) ||
+                    ({
+                      start: startIndex,
+                    } as any),
+                }
+              )
+            )
             // Removes the "1." characters used to set the list.
             .deleteRange({ from: range.from, to: range.to });
         },
@@ -51,12 +79,23 @@ const NumberedListItemBlockContent = createStronglyTypedTiptapNode({
 
   addKeyboardShortcuts() {
     return {
-      Enter: () => handleEnter(this.editor),
-      "Mod-Shift-7": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "numberedListItem",
-          props: {},
-        }),
+      Enter: () => handleEnter(this.options.editor),
+      "Mod-Shift-7": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "numberedListItem",
+            props: {},
+          })
+        );
+      },
     };
   },
 
@@ -67,7 +106,7 @@ const NumberedListItemBlockContent = createStronglyTypedTiptapNode({
   parseHTML() {
     return [
       {
-        tag: "div[data-content-type=" + this.name + "]", // TODO: remove if we can't come up with test case that needs this
+        tag: "div[data-content-type=" + this.name + "]",
       },
       // Case for regular HTML list structure.
       // (e.g.: when pasting from other apps)
@@ -88,7 +127,16 @@ const NumberedListItemBlockContent = createStronglyTypedTiptapNode({
             parent.tagName === "OL" ||
             (parent.tagName === "DIV" && parent.parentElement!.tagName === "OL")
           ) {
-            return {};
+            const startIndex =
+              parseInt(parent.getAttribute("start") || "1") || 1;
+
+            if (element.previousSibling || startIndex === 1) {
+              return {};
+            }
+
+            return {
+              start: startIndex,
+            };
           }
 
           return false;

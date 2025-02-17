@@ -11,6 +11,7 @@
       "toc": true
     }
   },
+
   "docs": {
     "title": "Docs",
     "display": "children"
@@ -19,5 +20,21 @@
     "title": "Examples",
     "display": "children"
   },
-  "about": "About"
+  "pricing": {
+    "type": "page",
+    "theme": {
+      "layout": "raw",
+      "sidebar": true,
+      "toc": true
+    }
+  },
+  "about": "About",
+  "legal": {
+    "title": "Legal",
+    "display": "hidden",
+    "theme": {
+      "sidebar": false,
+      "toc": false
+    }
+  }
 }

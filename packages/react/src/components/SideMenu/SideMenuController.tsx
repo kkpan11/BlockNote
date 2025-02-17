@@ -8,11 +8,12 @@ import {
 } from "@blocknote/core";
 import { FC } from "react";
 
-import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor";
-import { useUIElementPositioning } from "../../hooks/useUIElementPositioning";
-import { useUIPluginState } from "../../hooks/useUIPluginState";
-import { SideMenuProps } from "./SideMenuProps";
-import { SideMenu } from "./mantine/SideMenu";
+import { UseFloatingOptions } from "@floating-ui/react";
+import { useBlockNoteEditor } from "../../hooks/useBlockNoteEditor.js";
+import { useUIElementPositioning } from "../../hooks/useUIElementPositioning.js";
+import { useUIPluginState } from "../../hooks/useUIPluginState.js";
+import { SideMenu } from "./SideMenu.js";
+import { SideMenuProps } from "./SideMenuProps.js";
 
 export const SideMenuController = <
   BSchema extends BlockSchema = DefaultBlockSchema,
@@ -20,11 +21,11 @@ export const SideMenuController = <
   S extends StyleSchema = DefaultStyleSchema
 >(props: {
   sideMenu?: FC<SideMenuProps<BSchema, I, S>>;
+  floatingOptions?: Partial<UseFloatingOptions>;
 }) => {
   const editor = useBlockNoteEditor<BSchema, I, S>();
 
   const callbacks = {
-    addBlock: editor.sideMenu.addBlock,
     blockDragStart: editor.sideMenu.blockDragStart,
     blockDragEnd: editor.sideMenu.blockDragEnd,
     freezeMenu: editor.sideMenu.freezeMenu,
@@ -34,12 +35,13 @@ export const SideMenuController = <
   const state = useUIPluginState(
     editor.sideMenu.onUpdate.bind(editor.sideMenu)
   );
-  const { isMounted, ref, style } = useUIElementPositioning(
+  const { isMounted, ref, style, getFloatingProps } = useUIElementPositioning(
     state?.show || false,
     state?.referencePos || null,
     1000,
     {
-      placement: "left",
+      placement: "left-start",
+      ...props.floatingOptions,
     }
   );
 
@@ -52,8 +54,8 @@ export const SideMenuController = <
   const Component = props.sideMenu || SideMenu;
 
   return (
-    <div ref={ref} style={style}>
-      <Component {...data} {...callbacks} />
+    <div ref={ref} style={style} {...getFloatingProps()}>
+      <Component {...data} {...callbacks} editor={editor} />
     </div>
   );
 };

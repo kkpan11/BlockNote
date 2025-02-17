@@ -1,5 +1,5 @@
 import { Page, expect } from "@playwright/test";
-import { EDITOR_SELECTOR } from "./const";
+import { EDITOR_SELECTOR } from "./const.js";
 
 export async function focusOnEditor(page: Page) {
   await page.waitForSelector(EDITOR_SELECTOR);
@@ -14,6 +14,14 @@ export async function waitForSelectorInEditor(page: Page, selector: string) {
   });
 }
 
+export async function waitForTextInEditor(page: Page, text: string) {
+  const editor = page.locator(EDITOR_SELECTOR);
+  await editor.getByText(text).waitFor({
+    state: "attached",
+    timeout: 1000,
+  });
+}
+
 export async function getDoc(page: Page) {
   const window = await page.evaluateHandle("window");
   const doc = await window.evaluate((win) =>
@@ -23,7 +31,9 @@ export async function getDoc(page: Page) {
 }
 
 export function removeAttFromDoc(doc: any, att: string) {
-  if (typeof doc !== "object" || doc === null) {return;}
+  if (typeof doc !== "object" || doc === null) {
+    return;
+  }
   if (Object.keys(doc).includes(att)) {
     delete doc[att];
   }

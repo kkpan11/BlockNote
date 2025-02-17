@@ -1,14 +1,14 @@
-import { test } from "../../setup/setupScript";
+import { test } from "../../setup/setupScript.js";
 import {
   BASE_URL,
-  BLOCK_CONTAINER_SELECTOR,
   H_ONE_BLOCK_SELECTOR,
   H_THREE_BLOCK_SELECTOR,
   H_TWO_BLOCK_SELECTOR,
-} from "../../utils/const";
-import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor";
-import { insertHeading, insertParagraph } from "../../utils/copypaste";
-import { dragAndDropBlock } from "../../utils/mouse";
+  PARAGRAPH_SELECTOR,
+} from "../../utils/const.js";
+import { insertHeading, insertParagraph } from "../../utils/copypaste.js";
+import { compareDocToSnapshot, focusOnEditor } from "../../utils/editor.js";
+import { dragAndDropBlock } from "../../utils/mouse.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -66,22 +66,17 @@ test.describe("Check Block Dragging Functionality", () => {
     // Dragging first heading into next nested element.
     let dragTarget = await page.locator(H_ONE_BLOCK_SELECTOR);
     let dropTarget = await page.locator(H_TWO_BLOCK_SELECTOR);
-    await page.pause();
     await dragAndDropBlock(page, dragTarget, dropTarget, true);
 
     // Dragging second heading into next nested element.
     dragTarget = await page.locator(H_TWO_BLOCK_SELECTOR);
     dropTarget = await page.locator(H_THREE_BLOCK_SELECTOR);
-    await page.pause();
     await dragAndDropBlock(page, dragTarget, dropTarget, true);
 
     // Dragging third heading into outside nesting.
     dragTarget = await page.locator(H_THREE_BLOCK_SELECTOR);
-    dropTarget = await page.locator(BLOCK_CONTAINER_SELECTOR).last();
-    await page.pause();
+    dropTarget = await page.locator(PARAGRAPH_SELECTOR).last();
     await dragAndDropBlock(page, dragTarget, dropTarget, true);
-
-    await page.pause();
 
     await compareDocToSnapshot(page, "dragdropnested");
   });

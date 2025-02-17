@@ -1,4 +1,5 @@
 import {
+  applyNonSelectableBlockFix,
   BlockFromConfig,
   BlockNoteEditor,
   BlockSchemaWithBlock,
@@ -16,17 +17,28 @@ import {
   PropSchema,
   propsToAttributes,
   StyleSchema,
+  wrapInBlockStructure,
 } from "@blocknote/core";
 import {
-  NodeViewContent,
   NodeViewProps,
   NodeViewWrapper,
   ReactNodeViewRenderer,
+  useReactNodeView,
 } from "@tiptap/react";
 import { FC, ReactNode } from "react";
-import { renderToDOMSpec } from "./@util/ReactRenderUtil";
+import { renderToDOMSpec } from "./@util/ReactRenderUtil.js";
 
 // this file is mostly analogoues to `customBlocks.ts`, but for React blocks
+
+export type ReactCustomBlockRenderProps<
+  T extends CustomBlockConfig,
+  I extends InlineContentSchema,
+  S extends StyleSchema
+> = {
+  block: BlockFromConfig<T, I, S>;
+  editor: BlockNoteEditor<BlockSchemaWithBlock<T["type"], T>, I, S>;
+  contentRef: (node: HTMLElement | null) => void;
+};
 
 // extend BlockConfig but use a React render function
 export type ReactCustomBlockImplementation<
@@ -34,16 +46,8 @@ export type ReactCustomBlockImplementation<
   I extends InlineContentSchema,
   S extends StyleSchema
 > = {
-  render: FC<{
-    block: BlockFromConfig<T, I, S>;
-    editor: BlockNoteEditor<BlockSchemaWithBlock<T["type"], T>, I, S>;
-    contentRef: (node: HTMLElement | null) => void;
-  }>;
-  toExternalHTML?: FC<{
-    block: BlockFromConfig<T, I, S>;
-    editor: BlockNoteEditor<BlockSchemaWithBlock<T["type"], T>, I, S>;
-    contentRef: (node: HTMLElement | null) => void;
-  }>;
+  render: FC<ReactCustomBlockRenderProps<T, I, S>>;
+  toExternalHTML?: FC<ReactCustomBlockRenderProps<T, I, S>>;
   parse?: (
     el: HTMLElement
   ) => PartialBlockFromConfig<T, I, S>["props"] | undefined;
@@ -59,6 +63,7 @@ export function BlockContentWrapper<
   blockType: BType;
   blockProps: Props<PSchema>;
   propSchema: PSchema;
+  isFileBlock?: boolean;
   domAttributes?: Record<string, string>;
   children: ReactNode;
 }) {
@@ -84,15 +89,15 @@ export function BlockContentWrapper<
       // values
       {...Object.fromEntries(
         Object.entries(props.blockProps)
-          .filter(
-            ([prop, value]) =>
-              !inheritedProps.includes(prop) &&
-              value !== props.propSchema[prop].default
-          )
+          .filter(([prop, value]) => {
+            const spec = props.propSchema[prop];
+            return !inheritedProps.includes(prop) && value !== spec.default;
+          })
           .map(([prop, value]) => {
             return [camelToDataKebab(prop), value];
           })
-      )}>
+      )}
+      data-file-block={props.isFileBlock === true || undefined}>
       {props.children}
     </NodeViewWrapper>
   );
@@ -114,8 +119,8 @@ export function createReactBlockSpec<
       ? "inline*"
       : "") as T["content"] extends "inline" ? "inline*" : "",
     group: "blockContent",
-    selectable: true,
-
+    selectable: blockConfig.isSelectable ?? true,
+    isolating: true,
     addAttributes() {
       return propsToAttributes(blockConfig.propSchema);
     },
@@ -124,20 +129,29 @@ export function createReactBlockSpec<
       return getParseRules(blockConfig, blockImplementation.parse);
     },
 
-    renderHTML() {
-      // renderHTML is not really used, as we always use a nodeView, and we use toExternalHTML / toInternalHTML for serialization
-      // There's an edge case when this gets called nevertheless; before the nodeviews have been mounted
-      // this is why we implement it with a temporary placeholder
+    renderHTML({ HTMLAttributes }) {
+      // renderHTML is used for copy/pasting content from the editor back into
+      // the editor, so we need to make sure the `blockContent` element is
+      // structured correctly as this is what's used for parsing blocks. We
+      // just render a placeholder div inside as the `blockContent` element
+      // already has all the information needed for proper parsing.
       const div = document.createElement("div");
-      div.setAttribute("data-tmp-placeholder", "true");
-      return {
-        dom: div,
-      };
+      return wrapInBlockStructure(
+        {
+          dom: div,
+          contentDOM: blockConfig.content === "inline" ? div : undefined,
+        },
+        blockConfig.type,
+        {},
+        blockConfig.propSchema,
+        blockConfig.isFileBlock,
+        HTMLAttributes
+      );
     },
 
     addNodeView() {
-      return (props) =>
-        ReactNodeViewRenderer(
+      return (props) => {
+        const nodeView = ReactNodeViewRenderer(
           (props: NodeViewProps) => {
             // Gets the BlockNote editor instance
             const editor = this.options.editor! as BlockNoteEditor<any>;
@@ -152,8 +166,11 @@ export function createReactBlockSpec<
             const blockContentDOMAttributes =
               this.options.domAttributes?.blockContent || {};
 
-            // hacky, should export `useReactNodeView` from tiptap to get access to ref
-            const ref = (NodeViewContent({}) as any).ref;
+            const ref = useReactNodeView().nodeViewContentRef;
+
+            if (!ref) {
+              throw new Error("nodeViewContentRef is not set");
+            }
 
             const BlockContent = blockImplementation.render;
             return (
@@ -161,6 +178,7 @@ export function createReactBlockSpec<
                 blockType={block.type}
                 blockProps={block.props}
                 propSchema={blockConfig.propSchema}
+                isFileBlock={blockConfig.isFileBlock}
                 domAttributes={blockContentDOMAttributes}>
                 <BlockContent
                   block={block as any}
@@ -174,6 +192,13 @@ export function createReactBlockSpec<
             className: "bn-react-node-view-renderer",
           }
         )(props);
+
+        if (blockConfig.isSelectable === false) {
+          applyNonSelectableBlockFix(nodeView, this.editor);
+        }
+
+        return nodeView;
+      };
     },
   });
 
@@ -184,19 +209,22 @@ export function createReactBlockSpec<
         node.options.domAttributes?.blockContent || {};
 
       const BlockContent = blockImplementation.render;
-      const output = renderToDOMSpec((refCB) => (
-        <BlockContentWrapper
-          blockType={block.type}
-          blockProps={block.props}
-          propSchema={blockConfig.propSchema}
-          domAttributes={blockContentDOMAttributes}>
-          <BlockContent
-            block={block as any}
-            editor={editor as any}
-            contentRef={refCB}
-          />
-        </BlockContentWrapper>
-      ));
+      const output = renderToDOMSpec(
+        (refCB) => (
+          <BlockContentWrapper
+            blockType={block.type}
+            blockProps={block.props}
+            propSchema={blockConfig.propSchema}
+            domAttributes={blockContentDOMAttributes}>
+            <BlockContent
+              block={block as any}
+              editor={editor as any}
+              contentRef={refCB}
+            />
+          </BlockContentWrapper>
+        ),
+        editor
+      );
       output.contentDOM?.setAttribute("data-editable", "");
 
       return output;
@@ -221,7 +249,7 @@ export function createReactBlockSpec<
             />
           </BlockContentWrapper>
         );
-      });
+      }, editor);
       output.contentDOM?.setAttribute("data-editable", "");
 
       return output;

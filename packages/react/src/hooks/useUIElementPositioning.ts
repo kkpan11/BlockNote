@@ -1,42 +1,46 @@
 import {
+  useDismiss,
   useFloating,
   UseFloatingOptions,
+  useInteractions,
   useTransitionStyles,
 } from "@floating-ui/react";
 import { useEffect, useMemo } from "react";
-
-import { UiComponentPosition } from "./UiComponentPosition";
 
 export function useUIElementPositioning(
   show: boolean,
   referencePos: DOMRect | null,
   zIndex: number,
   options?: Partial<UseFloatingOptions>
-): UiComponentPosition {
+) {
   const { refs, update, context, floatingStyles } = useFloating({
     open: show,
     ...options,
   });
-
   const { isMounted, styles } = useTransitionStyles(context);
+
+  // handle "escape" and other dismiss events, these will add some listeners to
+  // getFloatingProps which need to be attached to the floating element
+  const dismiss = useDismiss(context);
+
+  const { getReferenceProps, getFloatingProps } = useInteractions([dismiss]);
 
   useEffect(() => {
     update();
   }, [referencePos, update]);
 
   useEffect(() => {
-    // TODO: Maybe throw error instead if null
+    // Will be null on initial render when used in UI component controllers.
     if (referencePos === null) {
       return;
     }
-
     refs.setReference({
       getBoundingClientRect: () => referencePos,
     });
   }, [referencePos, refs]);
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    return {
       isMounted,
       ref: refs.setFloating,
       style: {
@@ -45,7 +49,16 @@ export function useUIElementPositioning(
         ...floatingStyles,
         zIndex: zIndex,
       },
-    }),
-    [floatingStyles, isMounted, refs.setFloating, styles, zIndex]
-  );
+      getFloatingProps,
+      getReferenceProps,
+    };
+  }, [
+    floatingStyles,
+    isMounted,
+    refs.setFloating,
+    styles,
+    zIndex,
+    getFloatingProps,
+    getReferenceProps,
+  ]);
 }

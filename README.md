@@ -20,7 +20,7 @@ React rich text editor. Easily add a modern text editing experience to your app.
     Documentation
   </a> - <a href="https://www.blocknotejs.org/docs/quickstart">
     Quickstart
-  </a>- <a href="https://www.blocknotejs.org/docs/examples">
+  </a>- <a href="https://www.blocknotejs.org/examples">
     Examples
   </a>
 </p>
@@ -34,9 +34,10 @@ See our homepage @ [https://www.blocknotejs.org](https://www.blocknotejs.org/) o
 [![npm version](https://badge.fury.io/js/%40blocknote%2Freact.svg)](https://badge.fury.io/js/%40blocknote%2Freact)
 
 ```typescript
-import { BlockNoteView, useCreateBlockNote } from "@blocknote/react";
+import { useCreateBlockNote } from "@blocknote/react";
+import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/core/fonts/inter.css";
-import "@blocknote/react/style.css";
+import "@blocknote/mantine/style.css";
 
 function App() {
   const editor = useCreateBlockNote();
@@ -95,6 +96,9 @@ Directory structure:
 blocknote
 ├── packages/core       - The core of the editor
 ├── packages/react      - The main library for use in React apps
+├── packages/mantine    - Mantine (default) implementation of BlockNote UI
+├── packages/ariakit    - AriaKit implementation of BlockNote UI
+├── packages/shadcn     - ShadCN / Tailwind / Radix implementation of BlockNote UI
 ├── examples            - Example apps
 ├── playground          - App to browse the example apps (https://playground.blocknotejs.org)
 └── tests               - Playwright end to end tests
@@ -117,3 +121,5 @@ BlockNote is built as part of [TypeCell](https://www.typecell.org). TypeCell is 
 Hosting and deployments powered by Vercel:
 
 <a href="https://vercel.com/?utm_source=TypeCell&utm_campaign=oss"><img src="https://images.ctfassets.net/e5382hct74si/78Olo8EZRdUlcDUFQvnzG7/fa4cdb6dc04c40fceac194134788a0e2/1618983297-powered-by-vercel.svg" alt="NLNet" width="150"></a>
+
+This project is tested with BrowserStack

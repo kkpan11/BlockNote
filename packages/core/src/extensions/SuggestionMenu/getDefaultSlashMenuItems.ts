@@ -1,14 +1,15 @@
-import { Block, PartialBlock } from "../../blocks/defaultBlocks";
-import { checkDefaultBlockTypeInSchema } from "../../blocks/defaultBlockTypeGuards";
-import { BlockNoteEditor } from "../../editor/BlockNoteEditor";
+import { Block, PartialBlock } from "../../blocks/defaultBlocks.js";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
+
+import { checkDefaultBlockTypeInSchema } from "../../blocks/defaultBlockTypeGuards.js";
 import {
   BlockSchema,
   InlineContentSchema,
-  isStyledTextInlineContent,
   StyleSchema,
-} from "../../schema";
-import { formatKeyboardShortcut } from "../../util/browser";
-import { DefaultSuggestionItem } from "./DefaultSuggestionItem";
+  isStyledTextInlineContent,
+} from "../../schema/index.js";
+import { formatKeyboardShortcut } from "../../util/browser.js";
+import { DefaultSuggestionItem } from "./DefaultSuggestionItem.js";
 
 // Sets the editor's text cursor position to the next content editable block,
 // so either a block with inline content or a table. The last block is always a
@@ -50,6 +51,8 @@ export function insertOrUpdateBlock<
     throw new Error("Slash Menu open in a block that doesn't contain content.");
   }
 
+  let newBlock: Block<BSchema, I, S>;
+
   if (
     Array.isArray(currentBlock.content) &&
     ((currentBlock.content.length === 1 &&
@@ -58,19 +61,19 @@ export function insertOrUpdateBlock<
       currentBlock.content[0].text === "/") ||
       currentBlock.content.length === 0)
   ) {
-    editor.updateBlock(currentBlock, block);
+    newBlock = editor.updateBlock(currentBlock, block);
+    // We make sure to reset the cursor position to the new block as calling
+    // `updateBlock` may move it out. This generally happens when the content
+    // changes, or the update makes the block multi-column.
+    editor.setTextCursorPosition(newBlock);
   } else {
-    editor.insertBlocks([block], currentBlock, "after");
-    editor.setTextCursorPosition(
-      editor.getTextCursorPosition().nextBlock!,
-      "end"
-    );
+    newBlock = editor.insertBlocks([block], currentBlock, "after")[0];
+    editor.setTextCursorPosition(editor.getTextCursorPosition().nextBlock!);
   }
 
-  const insertedBlock = editor.getTextCursorPosition().block;
   setSelectionToNextContentEditableBlock(editor);
 
-  return insertedBlock;
+  return newBlock;
 }
 
 export function getDefaultSlashMenuItems<
@@ -83,95 +86,108 @@ export function getDefaultSlashMenuItems<
   if (checkDefaultBlockTypeInSchema("heading", editor)) {
     items.push(
       {
-        title: "Heading 1",
         onItemClick: () => {
           insertOrUpdateBlock(editor, {
             type: "heading",
             props: { level: 1 },
           });
         },
-        subtext: "Used for a top-level heading",
         badge: formatKeyboardShortcut("Mod-Alt-1"),
-        aliases: ["h", "heading1", "h1"],
-        group: "Headings",
+        key: "heading",
+        ...editor.dictionary.slash_menu.heading,
       },
       {
-        title: "Heading 2",
         onItemClick: () => {
           insertOrUpdateBlock(editor, {
             type: "heading",
             props: { level: 2 },
           });
         },
-        subtext: "Used for key sections",
         badge: formatKeyboardShortcut("Mod-Alt-2"),
-        aliases: ["h2", "heading2", "subheading"],
-        group: "Headings",
+        key: "heading_2",
+        ...editor.dictionary.slash_menu.heading_2,
       },
       {
-        title: "Heading 3",
         onItemClick: () => {
           insertOrUpdateBlock(editor, {
             type: "heading",
             props: { level: 3 },
           });
         },
-        subtext: "Used for subsections and group headings",
         badge: formatKeyboardShortcut("Mod-Alt-3"),
-        aliases: ["h3", "heading3", "subheading"],
-        group: "Headings",
+        key: "heading_3",
+        ...editor.dictionary.slash_menu.heading_3,
       }
     );
   }
 
   if (checkDefaultBlockTypeInSchema("numberedListItem", editor)) {
     items.push({
-      title: "Numbered List",
       onItemClick: () => {
         insertOrUpdateBlock(editor, {
           type: "numberedListItem",
         });
       },
-      subtext: "Used to display a numbered list",
       badge: formatKeyboardShortcut("Mod-Shift-7"),
-      aliases: ["ol", "li", "list", "numberedlist", "numbered list"],
-      group: "Basic blocks",
+      key: "numbered_list",
+      ...editor.dictionary.slash_menu.numbered_list,
     });
   }
 
   if (checkDefaultBlockTypeInSchema("bulletListItem", editor)) {
     items.push({
-      title: "Bullet List",
       onItemClick: () => {
         insertOrUpdateBlock(editor, {
           type: "bulletListItem",
         });
       },
-      subtext: "Used to display an unordered list",
       badge: formatKeyboardShortcut("Mod-Shift-8"),
-      aliases: ["ul", "li", "list", "bulletlist", "bullet list"],
-      group: "Basic blocks",
+      key: "bullet_list",
+      ...editor.dictionary.slash_menu.bullet_list,
+    });
+  }
+
+  if (checkDefaultBlockTypeInSchema("checkListItem", editor)) {
+    items.push({
+      onItemClick: () => {
+        insertOrUpdateBlock(editor, {
+          type: "checkListItem",
+        });
+      },
+      badge: formatKeyboardShortcut("Mod-Shift-9"),
+      key: "check_list",
+      ...editor.dictionary.slash_menu.check_list,
     });
   }
 
   if (checkDefaultBlockTypeInSchema("paragraph", editor)) {
     items.push({
-      title: "Paragraph",
       onItemClick: () => {
         insertOrUpdateBlock(editor, {
           type: "paragraph",
         });
       },
-      subtext: "Used for the body of your document",
       badge: formatKeyboardShortcut("Mod-Alt-0"),
-      aliases: ["p", "paragraph"],
-      group: "Basic blocks",
+      key: "paragraph",
+      ...editor.dictionary.slash_menu.paragraph,
+    });
+  }
+
+  if (checkDefaultBlockTypeInSchema("codeBlock", editor)) {
+    items.push({
+      onItemClick: () => {
+        insertOrUpdateBlock(editor, {
+          type: "codeBlock",
+        });
+      },
+      badge: formatKeyboardShortcut("Mod-Alt-c"),
+      key: "code_block",
+      ...editor.dictionary.slash_menu.code_block,
     });
   }
 
   if (checkDefaultBlockTypeInSchema("table", editor)) {
     items.push({
-      title: "Table",
       onItemClick: () => {
         insertOrUpdateBlock(editor, {
           type: "table",
@@ -188,43 +204,98 @@ export function getDefaultSlashMenuItems<
           },
         });
       },
-      subtext: "Used for for tables",
-      aliases: ["table"],
-      group: "Advanced",
       badge: undefined,
+      key: "table",
+      ...editor.dictionary.slash_menu.table,
     });
   }
 
   if (checkDefaultBlockTypeInSchema("image", editor)) {
     items.push({
-      title: "Image",
       onItemClick: () => {
         const insertedBlock = insertOrUpdateBlock(editor, {
           type: "image",
         });
 
-        // Immediately open the image toolbar
-        editor.prosemirrorView.dispatch(
-          editor._tiptapEditor.state.tr.setMeta(editor.imageToolbar!.plugin, {
+        // Immediately open the file toolbar
+        editor.dispatch(
+          editor._tiptapEditor.state.tr.setMeta(editor.filePanel!.plugin, {
             block: insertedBlock,
           })
         );
       },
-      subtext: "Insert an image",
-      aliases: [
-        "image",
-        "imageUpload",
-        "upload",
-        "img",
-        "picture",
-        "media",
-        "url",
-        "drive",
-        "dropbox",
-      ],
-      group: "Media",
+      key: "image",
+      ...editor.dictionary.slash_menu.image,
     });
   }
+
+  if (checkDefaultBlockTypeInSchema("video", editor)) {
+    items.push({
+      onItemClick: () => {
+        const insertedBlock = insertOrUpdateBlock(editor, {
+          type: "video",
+        });
+
+        // Immediately open the file toolbar
+        editor.dispatch(
+          editor._tiptapEditor.state.tr.setMeta(editor.filePanel!.plugin, {
+            block: insertedBlock,
+          })
+        );
+      },
+      key: "video",
+      ...editor.dictionary.slash_menu.video,
+    });
+  }
+
+  if (checkDefaultBlockTypeInSchema("audio", editor)) {
+    items.push({
+      onItemClick: () => {
+        const insertedBlock = insertOrUpdateBlock(editor, {
+          type: "audio",
+        });
+
+        // Immediately open the file toolbar
+        editor.dispatch(
+          editor._tiptapEditor.state.tr.setMeta(editor.filePanel!.plugin, {
+            block: insertedBlock,
+          })
+        );
+      },
+      key: "audio",
+      ...editor.dictionary.slash_menu.audio,
+    });
+  }
+
+  if (checkDefaultBlockTypeInSchema("file", editor)) {
+    items.push({
+      onItemClick: () => {
+        const insertedBlock = insertOrUpdateBlock(editor, {
+          type: "file",
+        });
+
+        // Immediately open the file toolbar
+        editor.dispatch(
+          editor._tiptapEditor.state.tr.setMeta(editor.filePanel!.plugin, {
+            block: insertedBlock,
+          })
+        );
+      },
+      key: "file",
+      ...editor.dictionary.slash_menu.file,
+    });
+  }
+
+  items.push({
+    onItemClick: () => {
+      editor.openSuggestionMenu(":", {
+        deleteTriggerCharacter: true,
+        ignoreQueryLength: true,
+      });
+    },
+    key: "emoji",
+    ...editor.dictionary.slash_menu.emoji,
+  });
 
   return items;
 }
@@ -234,10 +305,10 @@ export function filterSuggestionItems<
 >(items: T[], query: string) {
   return items.filter(
     ({ title, aliases }) =>
-      title.toLowerCase().startsWith(query.toLowerCase()) ||
+      title.toLowerCase().includes(query.toLowerCase()) ||
       (aliases &&
         aliases.filter((alias) =>
-          alias.toLowerCase().startsWith(query.toLowerCase())
+          alias.toLowerCase().includes(query.toLowerCase())
         ).length !== 0)
   );
 }

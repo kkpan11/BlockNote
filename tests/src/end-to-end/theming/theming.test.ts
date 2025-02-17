@@ -1,14 +1,14 @@
 import { expect } from "@playwright/test";
-import { test } from "../../setup/setupScript";
+import { test } from "../../setup/setupScript.js";
 import {
   BASE_URL,
   DRAG_HANDLE_SELECTOR,
   LINK_BUTTON_SELECTOR,
   PARAGRAPH_SELECTOR,
-} from "../../utils/const";
-import { focusOnEditor } from "../../utils/editor";
-import { moveMouseOverElement } from "../../utils/mouse";
-import { executeSlashCommand } from "../../utils/slashmenu";
+} from "../../utils/const.js";
+import { focusOnEditor } from "../../utils/editor.js";
+import { moveMouseOverElement } from "../../utils/mouse.js";
+import { executeSlashCommand } from "../../utils/slashmenu.js";
 
 test.use({
   colorScheme: "dark",
@@ -35,7 +35,7 @@ test.describe("Check Dark Theme is Automatically Applied", () => {
       "dark-formatting-toolbar.png"
     );
   });
-  test("Should show dark hyperlink toolbar", async ({ page }) => {
+  test("Should show dark link toolbar", async ({ page }) => {
     await focusOnEditor(page);
     await page.keyboard.type("Paragraph");
     await page.keyboard.press("Shift+Home");
@@ -45,11 +45,10 @@ test.describe("Check Dark Theme is Automatically Applied", () => {
 
     await page.keyboard.type("link");
     await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowLeft");
 
     await page.waitForTimeout(500);
-    expect(await page.screenshot()).toMatchSnapshot(
-      "dark-hyperlink-toolbar.png"
-    );
+    expect(await page.screenshot()).toMatchSnapshot("dark-link-toolbar.png");
   });
   test("Should show dark slash menu", async ({ page }) => {
     await focusOnEditor(page);
@@ -57,6 +56,14 @@ test.describe("Check Dark Theme is Automatically Applied", () => {
 
     await page.waitForTimeout(500);
     expect(await page.screenshot()).toMatchSnapshot("dark-slash-menu.png");
+  });
+  test("Should show dark emoji picker", async ({ page }) => {
+    await focusOnEditor(page);
+    await page.keyboard.press(":");
+    await page.keyboard.type("sm");
+
+    await page.waitForTimeout(500);
+    expect(await page.screenshot()).toMatchSnapshot("dark-emoji-picker.png");
   });
   test("Should show dark side menu", async ({ page }) => {
     await focusOnEditor(page);

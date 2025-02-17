@@ -1,5 +1,5 @@
-import { BlockTypeDropdownItem } from "./mantine/DefaultDropdowns/BlockTypeDropdown";
+import { BlockTypeSelectItem } from "./DefaultSelects/BlockTypeSelect.js";
 
 export type FormattingToolbarProps = {
-  blockTypeDropdownItems?: BlockTypeDropdownItem[];
+  blockTypeSelectItems?: BlockTypeSelectItem[];
 };

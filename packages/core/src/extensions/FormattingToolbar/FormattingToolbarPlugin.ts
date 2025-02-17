@@ -1,28 +1,51 @@
-import { isNodeSelection, posToDOMRect } from "@tiptap/core";
-import { EditorState, Plugin, PluginKey } from "prosemirror-state";
+import { isNodeSelection, isTextSelection, posToDOMRect } from "@tiptap/core";
+import { EditorState, Plugin, PluginKey, PluginView } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
-import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
-import { UiElementPosition } from "../../extensions-shared/UiElementPosition";
-import { BlockSchema, InlineContentSchema, StyleSchema } from "../../schema";
-import { EventEmitter } from "../../util/EventEmitter";
+import type { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
+import { UiElementPosition } from "../../extensions-shared/UiElementPosition.js";
+import {
+  BlockSchema,
+  InlineContentSchema,
+  StyleSchema,
+} from "../../schema/index.js";
+import { EventEmitter } from "../../util/EventEmitter.js";
 
 export type FormattingToolbarState = UiElementPosition;
 
-export class FormattingToolbarView {
+export class FormattingToolbarView implements PluginView {
   public state?: FormattingToolbarState;
   public emitUpdate: () => void;
 
   public preventHide = false;
   public preventShow = false;
-  public prevWasEditable: boolean | null = null;
 
   public shouldShow: (props: {
     view: EditorView;
     state: EditorState;
     from: number;
     to: number;
-  }) => boolean = ({ state }) => !state.selection.empty;
+  }) => boolean = ({ state, from, to, view }) => {
+    const { doc, selection } = state;
+    const { empty } = selection;
+
+    // Sometime check for `empty` is not enough.
+    // Doubleclick an empty paragraph returns a node size of 2.
+    // So we check also for an empty text size.
+    const isEmptyTextBlock =
+      !doc.textBetween(from, to).length && isTextSelection(state.selection);
+
+    // Don't show toolbar inside code blocks
+    if (
+      selection.$from.parent.type.spec.code ||
+      (isNodeSelection(selection) && selection.node.type.spec.code)
+    ) {
+      return false;
+    }
+
+    // check view.hasFocus so that the toolbar doesn't show up when the editor is not focused or when for example a code block is focused
+    return !(!view.hasFocus() || empty || isEmptyTextBlock);
+  };
 
   constructor(
     private readonly editor: BlockNoteEditor<
@@ -47,34 +70,13 @@ export class FormattingToolbarView {
     pmView.dom.addEventListener("mouseup", this.viewMouseupHandler);
     pmView.dom.addEventListener("dragstart", this.dragHandler);
     pmView.dom.addEventListener("dragover", this.dragHandler);
-
-    pmView.dom.addEventListener("focus", this.focusHandler);
     pmView.dom.addEventListener("blur", this.blurHandler);
 
-    document.addEventListener("scroll", this.scrollHandler);
+    // Setting capture=true ensures that any parent container of the editor that
+    // gets scrolled will trigger the scroll event. Scroll events do not bubble
+    // and so won't propagate to the document by default.
+    pmView.root.addEventListener("scroll", this.scrollHandler, true);
   }
-
-  viewMousedownHandler = () => {
-    this.preventShow = true;
-  };
-
-  viewMouseupHandler = () => {
-    this.preventShow = false;
-    setTimeout(() => this.update(this.pmView));
-  };
-
-  // For dragging the whole editor.
-  dragHandler = () => {
-    if (this.state?.show) {
-      this.state.show = false;
-      this.emitUpdate();
-    }
-  };
-
-  focusHandler = () => {
-    // we use `setTimeout` to make sure `selection` is already updated
-    setTimeout(() => this.update(this.pmView));
-  };
 
   blurHandler = (event: FocusEvent) => {
     if (this.preventHide) {
@@ -93,11 +95,31 @@ export class FormattingToolbarView {
       event.relatedTarget &&
       // Element is inside the editor.
       (editorWrapper === (event.relatedTarget as Node) ||
-        editorWrapper.contains(event.relatedTarget as Node))
+        editorWrapper.contains(event.relatedTarget as Node) ||
+        (event.relatedTarget as HTMLElement).matches(
+          ".bn-ui-container, .bn-ui-container *"
+        ))
     ) {
       return;
     }
 
+    if (this.state?.show) {
+      this.state.show = false;
+      this.emitUpdate();
+    }
+  };
+
+  viewMousedownHandler = () => {
+    this.preventShow = true;
+  };
+
+  viewMouseupHandler = () => {
+    this.preventShow = false;
+    setTimeout(() => this.update(this.pmView));
+  };
+
+  // For dragging the whole editor.
+  dragHandler = () => {
     if (this.state?.show) {
       this.state.show = false;
       this.emitUpdate();
@@ -112,20 +134,20 @@ export class FormattingToolbarView {
   };
 
   update(view: EditorView, oldState?: EditorState) {
+    // Delays the update to handle edge case with drag and drop, where the view
+    // is blurred asynchronously and happens only after the state update.
+    // Wrapping in a setTimeout gives enough time to wait for the blur event to
+    // occur before updating the toolbar.
     const { state, composing } = view;
-    const { doc, selection } = state;
+    const { selection } = state;
     const isSame =
-      oldState && oldState.doc.eq(doc) && oldState.selection.eq(selection);
+      oldState &&
+      oldState.selection.from === state.selection.from &&
+      oldState.selection.to === state.selection.to;
 
-    if (
-      (this.prevWasEditable === null ||
-        this.prevWasEditable === this.editor.isEditable) &&
-      (composing || isSame)
-    ) {
+    if (composing || isSame) {
       return;
     }
-
-    this.prevWasEditable = this.editor.isEditable;
 
     // support for CellSelections
     const { ranges } = selection;
@@ -140,11 +162,12 @@ export class FormattingToolbarView {
     });
 
     // Checks if menu should be shown/updated.
-    if (
-      this.editor.isEditable &&
-      !this.preventShow &&
-      (shouldShow || this.preventHide)
-    ) {
+    if (!this.preventShow && (shouldShow || this.preventHide)) {
+      // Unlike other UI elements, we don't prevent the formatting toolbar from
+      // showing when the editor is not editable. This is because some buttons,
+      // e.g. the download file button, should still be accessible. Therefore,
+      // logic for hiding when the editor is non-editable is handled
+      // individually in each button.
       this.state = {
         show: true,
         referencePos: this.getSelectionBoundingBox(),
@@ -173,12 +196,17 @@ export class FormattingToolbarView {
     this.pmView.dom.removeEventListener("mouseup", this.viewMouseupHandler);
     this.pmView.dom.removeEventListener("dragstart", this.dragHandler);
     this.pmView.dom.removeEventListener("dragover", this.dragHandler);
-
-    this.pmView.dom.removeEventListener("focus", this.focusHandler);
     this.pmView.dom.removeEventListener("blur", this.blurHandler);
 
-    document.removeEventListener("scroll", this.scrollHandler);
+    this.pmView.root.removeEventListener("scroll", this.scrollHandler, true);
   }
+
+  closeMenu = () => {
+    if (this.state?.show) {
+      this.state.show = false;
+      this.emitUpdate();
+    }
+  };
 
   getSelectionBoundingBox() {
     const { state } = this.pmView;
@@ -191,7 +219,6 @@ export class FormattingToolbarView {
 
     if (isNodeSelection(selection)) {
       const node = this.pmView.nodeDOM(from) as HTMLElement;
-
       if (node) {
         return node.getBoundingClientRect();
       }
@@ -219,10 +246,25 @@ export class FormattingToolbarProsemirrorPlugin extends EventEmitter<any> {
         });
         return this.view;
       },
+      props: {
+        handleKeyDown: (_view, event: KeyboardEvent) => {
+          if (event.key === "Escape" && this.shown) {
+            this.view!.closeMenu();
+            return true;
+          }
+          return false;
+        },
+      },
     });
+  }
+
+  public get shown() {
+    return this.view?.state?.show || false;
   }
 
   public onUpdate(callback: (state: FormattingToolbarState) => void) {
     return this.on("update", callback);
   }
+
+  public closeMenu = () => this.view!.closeMenu();
 }

@@ -1,35 +1,37 @@
-import { EditorTestCases } from "../index";
+import { EditorTestCases } from "../index.js";
 
+import { uploadToTmpFilesDotOrg_DEV_ONLY } from "../../../blocks/FileBlockContent/uploadToTmpFilesDotOrg_DEV_ONLY.js";
 import {
   imagePropSchema,
-  renderImage,
-} from "../../../blocks/ImageBlockContent/ImageBlockContent";
-import { uploadToTmpFilesDotOrg_DEV_ONLY } from "../../../blocks/ImageBlockContent/uploadToTmpFilesDotOrg_DEV_ONLY";
+  imageRender,
+} from "../../../blocks/ImageBlockContent/ImageBlockContent.js";
 import {
   DefaultInlineContentSchema,
   DefaultStyleSchema,
   defaultBlockSpecs,
-} from "../../../blocks/defaultBlocks";
-import { defaultProps } from "../../../blocks/defaultProps";
-import { BlockNoteEditor } from "../../../editor/BlockNoteEditor";
-import { BlockNoteSchema } from "../../../editor/BlockNoteSchema";
-import { createBlockSpec } from "../../../schema/blocks/createSpec";
+} from "../../../blocks/defaultBlocks.js";
+import { defaultProps } from "../../../blocks/defaultProps.js";
+import { BlockNoteEditor } from "../../../editor/BlockNoteEditor.js";
+import { BlockNoteSchema } from "../../../editor/BlockNoteSchema.js";
+import { createBlockSpec } from "../../../schema/index.js";
 
 // This is a modified version of the default image block that does not implement
-// a `serialize` function. It's used to test if the custom serializer by default
-// serializes custom blocks using their `render` function.
+// a `toExternalHTML` function. It's used to test if the custom serializer by
+// default serializes custom blocks using their `render` function.
 const SimpleImage = createBlockSpec(
   {
-    type: "simpleImage" as const,
+    type: "simpleImage",
     propSchema: imagePropSchema,
     content: "none",
   },
-  { render: renderImage as any }
+  {
+    render: (block, editor) => imageRender(block as any, editor as any),
+  }
 );
 
 const CustomParagraph = createBlockSpec(
   {
-    type: "customParagraph" as const,
+    type: "customParagraph",
     propSchema: defaultProps,
     content: "inline",
   },
@@ -57,7 +59,7 @@ const CustomParagraph = createBlockSpec(
 
 const SimpleCustomParagraph = createBlockSpec(
   {
-    type: "simpleCustomParagraph" as const,
+    type: "simpleCustomParagraph",
     propSchema: defaultProps,
     content: "inline",
   },
@@ -96,6 +98,9 @@ export const customBlocksTestCases: EditorTestCases<
     });
   },
   documents: [
+    // Because images need to fetch the download URL async, their output HTML is
+    // initially rendered without a `src` attribute, which is reflected in the
+    // tests.
     {
       name: "simpleImage/button",
       blocks: [
@@ -108,12 +113,54 @@ export const customBlocksTestCases: EditorTestCases<
       name: "simpleImage/basic",
       blocks: [
         {
-          type: "simpleImage" as const,
+          type: "simpleImage",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            caption: "Caption",
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "simpleImage/noName",
+      blocks: [
+        {
+          type: "simpleImage",
           props: {
             url: "exampleURL",
             caption: "Caption",
-            width: 256,
-          } as const,
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "simpleImage/noCaption",
+      blocks: [
+        {
+          type: "simpleImage",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "simpleImage/noPreview",
+      blocks: [
+        {
+          type: "simpleImage",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            caption: "Caption",
+            showPreview: false,
+            previewWidth: 256,
+          },
         },
       ],
     },
@@ -121,20 +168,22 @@ export const customBlocksTestCases: EditorTestCases<
       name: "simpleImage/nested",
       blocks: [
         {
-          type: "simpleImage" as const,
+          type: "simpleImage",
           props: {
+            name: "example",
             url: "exampleURL",
             caption: "Caption",
-            width: 256,
-          } as const,
+            previewWidth: 256,
+          },
           children: [
             {
-              type: "simpleImage" as const,
+              type: "simpleImage",
               props: {
+                name: "example",
                 url: "exampleURL",
                 caption: "Caption",
-                width: 256,
-              } as const,
+                previewWidth: 256,
+              },
             },
           ],
         },
@@ -144,7 +193,7 @@ export const customBlocksTestCases: EditorTestCases<
       name: "customParagraph/basic",
       blocks: [
         {
-          type: "customParagraph" as const,
+          type: "customParagraph",
           content: "Custom Paragraph",
         },
       ],
@@ -153,12 +202,12 @@ export const customBlocksTestCases: EditorTestCases<
       name: "customParagraph/styled",
       blocks: [
         {
-          type: "customParagraph" as const,
+          type: "customParagraph",
           props: {
             textAlignment: "center",
             textColor: "orange",
             backgroundColor: "pink",
-          } as const,
+          },
           content: [
             {
               type: "text",
@@ -195,15 +244,15 @@ export const customBlocksTestCases: EditorTestCases<
       name: "customParagraph/nested",
       blocks: [
         {
-          type: "customParagraph" as const,
+          type: "customParagraph",
           content: "Custom Paragraph",
           children: [
             {
-              type: "customParagraph" as const,
+              type: "customParagraph",
               content: "Nested Custom Paragraph 1",
             },
             {
-              type: "customParagraph" as const,
+              type: "customParagraph",
               content: "Nested Custom Paragraph 2",
             },
           ],
@@ -211,10 +260,19 @@ export const customBlocksTestCases: EditorTestCases<
       ],
     },
     {
+      name: "customParagraph/lineBreaks",
+      blocks: [
+        {
+          type: "customParagraph",
+          content: "Line 1\nLine 2",
+        },
+      ],
+    },
+    {
       name: "simpleCustomParagraph/basic",
       blocks: [
         {
-          type: "simpleCustomParagraph" as const,
+          type: "simpleCustomParagraph",
           content: "Custom Paragraph",
         },
       ],
@@ -223,12 +281,12 @@ export const customBlocksTestCases: EditorTestCases<
       name: "simpleCustomParagraph/styled",
       blocks: [
         {
-          type: "simpleCustomParagraph" as const,
+          type: "simpleCustomParagraph",
           props: {
             textAlignment: "center",
             textColor: "orange",
             backgroundColor: "pink",
-          } as const,
+          },
           content: [
             {
               type: "text",
@@ -265,15 +323,15 @@ export const customBlocksTestCases: EditorTestCases<
       name: "simpleCustomParagraph/nested",
       blocks: [
         {
-          type: "simpleCustomParagraph" as const,
+          type: "simpleCustomParagraph",
           content: "Custom Paragraph",
           children: [
             {
-              type: "simpleCustomParagraph" as const,
+              type: "simpleCustomParagraph",
               content: "Nested Custom Paragraph 1",
             },
             {
-              type: "simpleCustomParagraph" as const,
+              type: "simpleCustomParagraph",
               content: "Nested Custom Paragraph 2",
             },
           ],

@@ -1,12 +1,14 @@
 import { InputRule } from "@tiptap/core";
+import { updateBlockCommand } from "../../../api/blockManipulation/commands/updateBlock/updateBlock.js";
+import { getBlockInfoFromSelection } from "../../../api/getBlockInfoFromPos.js";
 import {
   PropSchema,
   createBlockSpecFromStronglyTypedTiptapNode,
   createStronglyTypedTiptapNode,
-} from "../../../schema";
-import { createDefaultBlockDOMOutputSpec } from "../../defaultBlockHelpers";
-import { defaultProps } from "../../defaultProps";
-import { handleEnter } from "../ListItemKeyboardShortcuts";
+} from "../../../schema/index.js";
+import { createDefaultBlockDOMOutputSpec } from "../../defaultBlockHelpers.js";
+import { defaultProps } from "../../defaultProps.js";
+import { handleEnter } from "../ListItemKeyboardShortcuts.js";
 
 export const bulletListItemPropSchema = {
   ...defaultProps,
@@ -16,17 +18,34 @@ const BulletListItemBlockContent = createStronglyTypedTiptapNode({
   name: "bulletListItem",
   content: "inline*",
   group: "blockContent",
+  // This is to make sure that check list parse rules run before, since they
+  // both parse `li` elements but check lists are more specific.
+  priority: 90,
   addInputRules() {
     return [
       // Creates an unordered list when starting with "-", "+", or "*".
       new InputRule({
         find: new RegExp(`^[-+*]\\s$`),
         handler: ({ state, chain, range }) => {
+          const blockInfo = getBlockInfoFromSelection(state);
+          if (
+            !blockInfo.isBlockContainer ||
+            blockInfo.blockContent.node.type.spec.content !== "inline*"
+          ) {
+            return;
+          }
+
           chain()
-            .BNUpdateBlock(state.selection.from, {
-              type: "bulletListItem",
-              props: {},
-            })
+            .command(
+              updateBlockCommand(
+                this.options.editor,
+                blockInfo.bnBlock.beforePos,
+                {
+                  type: "bulletListItem",
+                  props: {},
+                }
+              )
+            )
             // Removes the "-", "+", or "*" character used to set the list.
             .deleteRange({ from: range.from, to: range.to });
         },
@@ -36,12 +55,23 @@ const BulletListItemBlockContent = createStronglyTypedTiptapNode({
 
   addKeyboardShortcuts() {
     return {
-      Enter: () => handleEnter(this.editor),
-      "Mod-Shift-8": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "bulletListItem",
-          props: {},
-        }),
+      Enter: () => handleEnter(this.options.editor),
+      "Mod-Shift-8": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "bulletListItem",
+            props: {},
+          })
+        );
+      },
     };
   },
 
@@ -49,7 +79,7 @@ const BulletListItemBlockContent = createStronglyTypedTiptapNode({
     return [
       // Case for regular HTML list structure.
       {
-        tag: "div[data-content-type=" + this.name + "]", // TODO: remove if we can't come up with test case that needs this
+        tag: "div[data-content-type=" + this.name + "]",
       },
       {
         tag: "li",

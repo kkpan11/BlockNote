@@ -1,27 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BlockNoteEditor } from "../../editor/BlockNoteEditor";
+import { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
 
-import { PartialBlock } from "../../blocks/defaultBlocks";
-import { customInlineContentTestCases } from "../testUtil/cases/customInlineContent";
-import { customStylesTestCases } from "../testUtil/cases/customStyles";
-import { defaultSchemaTestCases } from "../testUtil/cases/defaultSchema";
+import { PartialBlock } from "../../blocks/defaultBlocks.js";
+import { customBlocksTestCases } from "../testUtil/cases/customBlocks.js";
+import { customInlineContentTestCases } from "../testUtil/cases/customInlineContent.js";
+import { customStylesTestCases } from "../testUtil/cases/customStyles.js";
+import { defaultSchemaTestCases } from "../testUtil/cases/defaultSchema.js";
 import {
   addIdsToBlock,
   partialBlockToBlockForTesting,
-} from "../testUtil/partialBlockTestUtil";
-import { blockToNode, nodeToBlock } from "./nodeConversions";
+} from "../testUtil/partialBlockTestUtil.js";
+import { blockToNode } from "./blockToNode.js";
+import { nodeToBlock } from "./nodeToBlock.js";
 
 function validateConversion(
   block: PartialBlock<any, any, any>,
   editor: BlockNoteEditor<any, any, any>
 ) {
   addIdsToBlock(block);
-  const node = blockToNode(
-    block,
-    editor._tiptapEditor.schema,
-    editor.schema.styleSchema
-  );
+  const node = blockToNode(block, editor.pmSchema, editor.schema.styleSchema);
 
   expect(node).toMatchSnapshot();
 
@@ -44,6 +42,7 @@ const testCases = [
   defaultSchemaTestCases,
   customStylesTestCases,
   customInlineContentTestCases,
+  customBlocksTestCases,
 ];
 
 describe("Test BlockNote-Prosemirror conversion", () => {
@@ -54,6 +53,13 @@ describe("Test BlockNote-Prosemirror conversion", () => {
 
       beforeEach(() => {
         editor = testCase.createEditor();
+        // Note that we don't necessarily need to mount a root
+        // Currently, we do mount to a root so that it reflects the "production" use-case more closely.
+
+        // However, it would be nice to increased converage and share the same set of tests for these cases:
+        // - does render to a root
+        // - does not render to a root
+        // - runs in server (jsdom) environment using server-util
         editor.mount(div);
       });
 

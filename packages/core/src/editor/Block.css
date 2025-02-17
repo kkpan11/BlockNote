@@ -13,15 +13,9 @@ BASIC STYLES
   flex-direction: column;
 }
 
-/*Ensures block content inside React node views spans editor width*/
-.bn-react-node-view-renderer {
-  display: flex;
-  flex-grow: 1;
-}
-
 .bn-block-content {
+  display: flex;
   padding: 3px 0;
-  flex-grow: 1;
   transition: font-size 0.2s;
   width: 100%;
   /*
@@ -34,6 +28,13 @@ BASIC STYLES
   /* content: ""; */
   transition: all 0.2s;
   /*margin: 0px;*/
+}
+
+.bn-block-content.ProseMirror-selectednode > *,
+/* Case for node view renderers */
+.ProseMirror-selectednode > .bn-block-content > * {
+  border-radius: 4px;
+  outline: 4px solid rgb(100, 160, 255);
 }
 
 /*
@@ -113,13 +114,13 @@ NESTED BLOCKS
 }
 
 /* HEADINGS*/
-[data-level="1"] {
+[data-content-type="heading"] {
   --level: 3em;
 }
-[data-level="2"] {
+[data-content-type="heading"][data-level="2"] {
   --level: 2em;
 }
-[data-level="3"] {
+[data-content-type="heading"][data-level="3"] {
   --level: 1.3em;
 }
 
@@ -155,7 +156,7 @@ NESTED BLOCKS
 /* Ordered */
 .bn-block-content[data-content-type="numberedListItem"] {
   display: flex;
-  gap: 1.2em;
+  gap: 0.5em;
 }
 
 [data-content-type="numberedListItem"] {
@@ -181,7 +182,31 @@ NESTED BLOCKS
 /* Unordered */
 .bn-block-content[data-content-type="bulletListItem"] {
   display: flex;
-  gap: 1.2em;
+  gap: 0.5em;
+}
+
+/* Checked */
+.bn-block-content[data-content-type="checkListItem"] > div {
+  display: flex;
+}
+
+.bn-block-content[data-content-type="checkListItem"] > div > div > input {
+  margin: 0;
+  margin-inline-end: 0.5em;
+  cursor: pointer;
+}
+
+.bn-block-content[data-content-type="checkListItem"][data-checked="true"]
+  .bn-inline-content {
+  text-decoration: line-through;
+}
+
+.bn-block-content[data-text-alignment="center"] {
+  justify-content: center;
+}
+
+.bn-block-content[data-text-alignment="right"] {
+  justify-content: flex-end;
 }
 
 /* No list nesting */
@@ -235,62 +260,130 @@ NESTED BLOCKS
   content: "▪";
 }
 
-/* IMAGES */
+/* CODE BLOCKS */
+.bn-block-content[data-content-type="codeBlock"] {
+  position: relative;
 
-[data-content-type="image"] .bn-image-block-content-wrapper {
+  background-color: rgb(22 22 22);
+  color: white;
+  border-radius: 8px;
+}
+.bn-block-content[data-content-type="codeBlock"] > pre {
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
+  width: 100%;
+  tab-size: 2;
+
+  padding: 24px;
+}
+.bn-block-content[data-content-type="codeBlock"] > div {
+  outline: none !important;
+}
+.bn-block-content[data-content-type="codeBlock"] > div > select {
+  outline: none !important;
+  appearance: none;
+  user-select: none;
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+
+  position: absolute;
+  top: 8px;
+  left: 18px;
+
+  font-size: 0.8em;
+  color: white;
+
+  opacity: 0;
+  transition: opacity 0.3s;
+  transition-delay: 1s;
+}
+.bn-block-content[data-content-type="codeBlock"] > div > select > option {
+  color: black;
+}
+.bn-block-content[data-content-type="codeBlock"]:hover > div > select,
+.bn-block-content[data-content-type="codeBlock"] > div > select:focus {
+  opacity: 0.5;
+  transition-delay: 0.1s;
+}
+
+/* PAGE BREAK */
+.bn-block-content[data-content-type="pageBreak"] > div {
+  width: 100%;
+  height: 0;
+  border-top: dotted rgb(125, 121, 122) 2px;
+  margin-block: 11px;
+}
+
+@media print {
+  .bn-block-content[data-content-type="pageBreak"] > div {
+    page-break-after: always;
+  }
+}
+
+/* FILES */
+
+/* Element that wraps content for all file blocks */
+[data-file-block] .bn-file-block-content-wrapper {
+  cursor: pointer;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   user-select: none;
+}
+
+/* Add block button & default element (name with icon) */
+[data-file-block] .bn-file-block-content-wrapper:has(.bn-add-file-button),
+[data-file-block] .bn-file-block-content-wrapper:has(.bn-file-name-with-icon) {
   width: 100%;
 }
 
-[data-content-type="image"] .bn-add-image-button {
-  display: flex;
-  flex-direction: row;
+[data-file-block] .bn-add-file-button {
   align-items: center;
-  gap: 8px;
-  background-color: whitesmoke;
+  background-color: rgb(242, 241, 238);
   border-radius: 4px;
-  cursor: pointer;
+  color: rgb(125, 121, 122);
+  display: flex;
+  gap: 10px;
   padding: 12px;
-  width: 100%;
 }
 
-[data-content-type="image"] .bn-add-image-button:hover {
-  background-color: gainsboro;
+.bn-editor[contenteditable="true"] [data-file-block] .bn-add-file-button:hover,
+[data-file-block] .bn-file-name-with-icon:hover,
+.ProseMirror-selectednode .bn-file-name-with-icon {
+  background-color: rgb(225, 225, 225);
 }
 
-[data-content-type="image"] .bn-add-image-button-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 5H4V19L13.2923 9.70649C13.6828 9.31595 14.3159 9.31591 14.7065 9.70641L20 15.0104V5ZM2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM8 11C6.89543 11 6 10.1046 6 9C6 7.89543 6.89543 7 8 7C9.10457 7 10 7.89543 10 9C10 10.1046 9.10457 11 8 11Z'%3E%3C/path%3E%3C/svg%3E");
+[data-file-block] .bn-add-file-button-icon,
+[data-file-block] .bn-file-icon {
   width: 24px;
   height: 24px;
 }
 
-[data-content-type="image"] .bn-add-image-button-text {
-  color: black;
+[data-file-block] .bn-add-file-button-text {
+  font-size: 0.9rem;
 }
 
-[data-content-type="image"] .bn-image-and-caption-wrapper {
-  display: flex;
-  flex-direction: column;
+[data-file-block] .bn-file-name-with-icon {
   border-radius: 4px;
-}
-
-[data-content-type="image"] .bn-image-wrapper {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  position: relative;
-  width: fit-content;
+  gap: 4px;
+  padding: 4px;
 }
 
-[data-content-type="image"] .bn-image {
-  border-radius: 4px;
-  max-width: 100%;
+/* File captions */
+[data-file-block] .bn-file-caption {
+  font-size: 0.8em;
+  padding-block: 4px;
+  word-break: break-word;
 }
 
-[data-content-type="image"] .bn-image-resize-handle {
+[data-file-block] .bn-file-caption:empty {
+  padding-block: 0;
+}
+
+/* Resize handles */
+[data-file-block] .bn-resize-handle {
   position: absolute;
   width: 8px;
   height: 30px;
@@ -300,12 +393,26 @@ NESTED BLOCKS
   cursor: ew-resize;
 }
 
-[data-content-type="image"] .caption {
-  font-size: 0.8em;
+/* Visual media file blocks, e.g. images & videos */
+[data-file-block] .bn-visual-media-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+[data-file-block] .bn-visual-media {
+  border-radius: 4px;
+  width: 100%;
+}
+
+/* Block-specific styles */
+[data-content-type="audio"] > .bn-file-block-content-wrapper,
+.bn-audio {
+  width: 100%;
 }
 
 /* PLACEHOLDERS*/
-.bn-inline-content:has(> .ProseMirror-trailingBreak):before {
+.bn-inline-content:has(> .ProseMirror-trailingBreak:only-child):before {
   /*float: left; */
   pointer-events: none;
   height: 0;
@@ -367,7 +474,7 @@ NESTED BLOCKS
 }
 
 [data-background-color="orange"] {
-  background-color: #faebdd;
+  background-color: #f6e9d9;
 }
 
 [data-background-color="yellow"] {
@@ -392,17 +499,41 @@ NESTED BLOCKS
 
 /* TEXT ALIGNMENT */
 [data-text-alignment="left"] {
+  justify-content: flex-start;
   text-align: left;
 }
 
 [data-text-alignment="center"] {
+  justify-content: center;
   text-align: center;
 }
 
 [data-text-alignment="right"] {
+  justify-content: flex-end;
   text-align: right;
 }
 
 [data-text-alignment="justify"] {
+  justify-content: flex-start;
   text-align: justify;
+}
+
+.bn-block-column-list {
+  display: flex;
+  flex-direction: row;
+}
+
+.bn-block-column {
+  flex: 1;
+  padding: 12px 20px;
+  /* scroll if we overflow, for example when tables or images are in the column */
+  overflow-x: auto;
+}
+
+.bn-block-column:first-child {
+  padding-left: 0;
+}
+
+.bn-block-column:last-child {
+  padding-right: 0;
 }

@@ -8,9 +8,12 @@ import {
   nodeToBlock,
   partialBlockToBlockForTesting,
 } from "@blocknote/core";
-import { customReactBlockSchemaTestCases } from "./testCases/customReactBlocks";
-import { customReactInlineContentTestCases } from "./testCases/customReactInlineContent";
-import { customReactStylesTestCases } from "./testCases/customReactStyles";
+import { flushSync } from "react-dom";
+import { Root, createRoot } from "react-dom/client";
+import { BlockNoteViewRaw } from "../editor/BlockNoteView.js";
+import { customReactBlockSchemaTestCases } from "./testCases/customReactBlocks.js";
+import { customReactInlineContentTestCases } from "./testCases/customReactInlineContent.js";
+import { customReactStylesTestCases } from "./testCases/customReactStyles.js";
 
 function addIdsToBlock(block: PartialBlock<any, any, any>) {
   if (!block.id) {
@@ -26,11 +29,7 @@ function validateConversion(
   editor: BlockNoteEditor<any, any, any>
 ) {
   addIdsToBlock(block);
-  const node = blockToNode(
-    block,
-    editor._tiptapEditor.schema,
-    editor.schema.styleSchema
-  );
+  const node = blockToNode(block, editor.pmSchema, editor.schema.styleSchema);
 
   expect(node).toMatchSnapshot();
 
@@ -59,15 +58,29 @@ describe("Test React BlockNote-Prosemirror conversion", () => {
   for (const testCase of testCases) {
     describe("Case: " + testCase.name, () => {
       let editor: BlockNoteEditor<any, any, any>;
+      // Note that we don't necessarily need to mount a root (unless we need a React Context)
+      // Currently, we do mount to a root so that it reflects the "production" use-case more closely.
+
+      // However, it would be nice to increased converage and share the same set of tests for these cases:
+      // - does render to a root
+      // - does not render to a root
+      // - runs in server (jsdom) environment using server-util
+      let root: Root;
       const div = document.createElement("div");
 
       beforeEach(() => {
         editor = testCase.createEditor();
-        editor.mount(div);
+
+        const el = <BlockNoteViewRaw editor={editor} />;
+        root = createRoot(div);
+        flushSync(() => {
+          // eslint-disable-next-line testing-library/no-render-in-setup
+          root.render(el);
+        });
       });
 
       afterEach(() => {
-        editor.mount(undefined);
+        root.unmount();
         editor._tiptapEditor.destroy();
         editor = undefined as any;
 

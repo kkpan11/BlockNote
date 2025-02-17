@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BlockNoteEditor } from "../../..";
+import { BlockNoteEditor } from "../../../index.js";
+import { doPaste } from "../../testUtil/paste.js";
 
 async function parseMarkdownAndCompareSnapshots(
   md: string,
@@ -14,6 +15,18 @@ async function parseMarkdownAndCompareSnapshots(
   expect(JSON.stringify(blocks, undefined, 2)).toMatchFileSnapshot(
     snapshotPath
   );
+
+  if (!editor.prosemirrorView) {
+    throw new Error("Editor view not initialized.");
+  }
+
+  doPaste(editor.prosemirrorView, md, null, true, new ClipboardEvent("paste"));
+
+  const pastedSnapshotPath = "./__snapshots__/pasted/" + snapshotName + ".json";
+  expect(JSON.stringify(editor.document, undefined, 2)).toMatchFileSnapshot(
+    pastedSnapshotPath
+  );
+
   editor.mount(undefined);
 }
 

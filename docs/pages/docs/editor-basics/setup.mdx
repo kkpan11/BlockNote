@@ -24,7 +24,10 @@ type BlockNoteEditorOptions = {
   defaultStyles?: boolean;
   uploadFile?: (file: File) => Promise<string>;
   collaboration?: CollaborationOptions;
+  dictionary?: Dictionary;
   schema?: BlockNoteSchema;
+  trailingBlock?: boolean;
+  animations?: boolean;
 };
 ```
 
@@ -42,7 +45,13 @@ The hook takes two optional parameters:
 
 `collaboration`: Options for enabling real-time collaboration. See [Real-time Collaboration](/docs/advanced/real-time-collaboration) for more info.
 
+`dictionary`: Provide strings for localization. See the [Localization / i18n example](/examples/basic/localization) and [Custom Placeholders](/examples/basic/custom-placeholder).
+
 `schema` (_advanced_): The editor schema if you want to extend your editor with custom blocks, styles, or inline content [Custom Schemas](/docs/custom-schemas).
+
+`trailingBlock`: An option which user can pass with `false` value to disable the automatic creation of a trailing new block on the next line when the user types or edits any block. Defaults to `true` if undefined.
+
+`animations`: Whether changes to blocks (like indentation, creating lists, changing headings) should be animated or not. Defaults to `true`.
 
 **deps:** Dependency array that's internally passed to `useMemo`. A new editor will only be created when this array changes.
 
@@ -52,9 +61,9 @@ The hook takes two optional parameters:
     The `useCreateBlockNote` hook is actually a simple `useMemo` wrapper around
     the `BlockNoteEditor.create` method. You can use this method directly if you
     want to control the editor lifecycle manually. For example, we do this in
-    the [Saving & Loading example](/examples/basic/saving-loading) to delay the
-    editor creation until some content has been fetched from an external data
-    source.
+    the [Saving & Loading example](/examples/backend/saving-loading) to delay
+    the editor creation until some content has been fetched from an external
+    data source.
   </p>
 </Callout>
 
@@ -87,10 +96,11 @@ export type BlockNoteViewProps = {
         dark: Theme;
       };
   formattingToolbar?: boolean;
-  hyperlinkToolbar?: boolean;
+  linkToolbar?: boolean;
   sideMenu?: boolean;
   slashMenu?: boolean;
-  imageToolbar?: boolean;
+  emojiPicker?: boolean;
+  filePanel?: boolean;
   tableHandles?: boolean;
   children?:
 } & HTMLAttributes<HTMLDivElement>;
@@ -100,21 +110,23 @@ export type BlockNoteViewProps = {
 
 `editable`: Whether the editor should be editable.
 
-`onSelectionChange`: Callback for when the editor selection changes.
+`onSelectionChange`: Callback fired when the editor selection changes.
 
-`onChange`: Callback for when the editor selection or content changes.
+`onChange`: Callback fired when the editor content (document) changes.
 
 `theme`: The editor's theme, see [Themes](/docs/styling-theming/themes) for more about this.
 
 `formattingToolbar`: Whether the [Formatting Toolbar](/docs/ui-components/formatting-toolbar) should be enabled.
 
-`hyperlinkToolbar`: Whether the Hyperlink Toolbar should be enabled.
+`linkToolbar`: Whether the Link Toolbar should be enabled.
 
 `sideMenu`: Whether the [Block Side Menu](/docs/ui-components/side-menu) should be enabled.
 
 `slashMenu`: Whether the [Slash Menu](/docs/ui-components/suggestion-menus#slash-menu) should be enabled.
 
-`imageToolbar`: Whether the Image Toolbar should be enabled.
+`emojiPicker`: Whether the [Emoji Picker](/docs/advanced/grid-suggestion-menus#emoji-picker) should be enabled.
+
+`filePanel`: Whether the File Toolbar should be enabled.
 
 `tableHandles`: Whether the Table Handles should be enabled.
 

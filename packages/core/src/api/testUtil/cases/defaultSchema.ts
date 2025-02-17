@@ -1,21 +1,27 @@
-import { EditorTestCases } from "../index";
+import { EditorTestCases } from "../index.js";
 
-import { BlockNoteEditor } from "../../../editor/BlockNoteEditor";
+import { uploadToTmpFilesDotOrg_DEV_ONLY } from "../../../blocks/FileBlockContent/uploadToTmpFilesDotOrg_DEV_ONLY.js";
 import {
   DefaultBlockSchema,
   DefaultInlineContentSchema,
   DefaultStyleSchema,
-} from "../../../blocks/defaultBlocks";
-import { uploadToTmpFilesDotOrg_DEV_ONLY } from "../../../blocks/ImageBlockContent/uploadToTmpFilesDotOrg_DEV_ONLY";
+} from "../../../blocks/defaultBlocks.js";
+import {
+  pageBreakSchema,
+  withPageBreak,
+} from "../../../blocks/PageBreakBlockContent/schema.js";
+import { BlockNoteEditor } from "../../../editor/BlockNoteEditor.js";
+import { BlockNoteSchema } from "../../../editor/BlockNoteSchema.js";
 
 export const defaultSchemaTestCases: EditorTestCases<
-  DefaultBlockSchema,
+  DefaultBlockSchema & typeof pageBreakSchema.blockSchema,
   DefaultInlineContentSchema,
   DefaultStyleSchema
 > = {
   name: "default schema",
   createEditor: () => {
     return BlockNoteEditor.create({
+      schema: withPageBreak(BlockNoteSchema.create()),
       uploadFile: uploadToTmpFilesDotOrg_DEV_ONLY,
     });
   },
@@ -99,6 +105,198 @@ export const defaultSchemaTestCases: EditorTestCases<
       ],
     },
     {
+      name: "paragraph/lineBreaks",
+      blocks: [
+        {
+          type: "paragraph",
+          content: "Line 1\nLine 2",
+        },
+      ],
+    },
+    {
+      name: "lists/basic",
+      blocks: [
+        {
+          type: "bulletListItem",
+          content: "Bullet List Item 1",
+        },
+        {
+          type: "bulletListItem",
+          content: "Bullet List Item 2",
+        },
+        {
+          type: "numberedListItem",
+          content: "Numbered List Item 1",
+        },
+        {
+          type: "numberedListItem",
+          content: "Numbered List Item 2",
+        },
+        {
+          type: "checkListItem",
+          content: "Check List Item 1",
+        },
+        {
+          type: "checkListItem",
+          props: {
+            checked: true,
+          },
+          content: "Check List Item 2",
+        },
+      ],
+    },
+    {
+      name: "lists/nested",
+      blocks: [
+        {
+          type: "bulletListItem",
+          content: "Bullet List Item 1",
+        },
+        {
+          type: "bulletListItem",
+          content: "Bullet List Item 2",
+          children: [
+            {
+              type: "numberedListItem",
+              content: "Numbered List Item 1",
+            },
+            {
+              type: "numberedListItem",
+              content: "Numbered List Item 2",
+              children: [
+                {
+                  type: "checkListItem",
+                  content: "Check List Item 1",
+                },
+                {
+                  type: "checkListItem",
+                  props: {
+                    checked: true,
+                  },
+                  content: "Check List Item 2",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "codeBlock/empty",
+      blocks: [
+        {
+          type: "codeBlock",
+        },
+      ],
+    },
+    {
+      name: "codeBlock/defaultLanguage",
+      blocks: [
+        {
+          type: "codeBlock",
+          content: "console.log('Hello, world!');",
+        },
+      ],
+    },
+    {
+      name: "codeBlock/python",
+      blocks: [
+        {
+          type: "codeBlock",
+          props: { language: "python" },
+          content: "print('Hello, world!')",
+        },
+      ],
+    },
+    {
+      name: "codeBlock/contains-newlines",
+      blocks: [
+        {
+          type: "codeBlock",
+          content: "const hello = 'world';\nconsole.log(hello);\n",
+        },
+      ],
+    },
+    {
+      name: "pageBreak/basic",
+      blocks: [
+        {
+          type: "pageBreak",
+        },
+      ],
+    },
+    {
+      name: "file/button",
+      blocks: [
+        {
+          type: "file",
+        },
+      ],
+    },
+    {
+      name: "file/basic",
+      blocks: [
+        {
+          type: "file",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            caption: "Caption",
+          },
+        },
+      ],
+    },
+    {
+      name: "file/noName",
+      blocks: [
+        {
+          type: "file",
+          props: {
+            url: "exampleURL",
+            caption: "Caption",
+          },
+        },
+      ],
+    },
+    {
+      name: "file/noCaption",
+      blocks: [
+        {
+          type: "file",
+          props: {
+            name: "example",
+            url: "exampleURL",
+          },
+        },
+      ],
+    },
+    {
+      name: "file/nested",
+      blocks: [
+        {
+          type: "file",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            caption: "Caption",
+          },
+          children: [
+            {
+              type: "file",
+              props: {
+                name: "example",
+                url: "exampleURL",
+                caption: "Caption",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    // Because images need to fetch the download URL async, their internal HTML
+    // is initially rendered without a `src` attribute, which is reflected in
+    // the tests.
+    {
       name: "image/button",
       blocks: [
         {
@@ -112,9 +310,51 @@ export const defaultSchemaTestCases: EditorTestCases<
         {
           type: "image",
           props: {
+            name: "example",
             url: "exampleURL",
             caption: "Caption",
-            width: 256,
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "image/noName",
+      blocks: [
+        {
+          type: "image",
+          props: {
+            url: "exampleURL",
+            caption: "Caption",
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "image/noCaption",
+      blocks: [
+        {
+          type: "image",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            previewWidth: 256,
+          },
+        },
+      ],
+    },
+    {
+      name: "image/noPreview",
+      blocks: [
+        {
+          type: "image",
+          props: {
+            name: "example",
+            url: "exampleURL",
+            caption: "Caption",
+            showPreview: false,
+            previewWidth: 256,
           },
         },
       ],
@@ -127,7 +367,7 @@ export const defaultSchemaTestCases: EditorTestCases<
           props: {
             url: "exampleURL",
             caption: "Caption",
-            width: 256,
+            previewWidth: 256,
           },
           children: [
             {
@@ -135,10 +375,78 @@ export const defaultSchemaTestCases: EditorTestCases<
               props: {
                 url: "exampleURL",
                 caption: "Caption",
-                width: 256,
+                previewWidth: 256,
               },
             },
           ],
+        },
+      ],
+    },
+    {
+      name: "table/basic",
+      blocks: [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      name: "table/allColWidths",
+      blocks: [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            columnWidths: [100, 200, 300],
+            rows: [
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      name: "table/mixedColWidths",
+      blocks: [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            columnWidths: [100, undefined, 300],
+            rows: [
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+              {
+                cells: ["Table Cell", "Table Cell", "Table Cell"],
+              },
+            ],
+          },
         },
       ],
     },

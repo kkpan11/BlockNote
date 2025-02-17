@@ -1,11 +1,14 @@
 import { InputRule } from "@tiptap/core";
+import { updateBlockCommand } from "../../api/blockManipulation/commands/updateBlock/updateBlock.js";
+import { getBlockInfoFromSelection } from "../../api/getBlockInfoFromPos.js";
 import {
   PropSchema,
   createBlockSpecFromStronglyTypedTiptapNode,
   createStronglyTypedTiptapNode,
-} from "../../schema";
-import { createDefaultBlockDOMOutputSpec } from "../defaultBlockHelpers";
-import { defaultProps } from "../defaultProps";
+  propsToAttributes,
+} from "../../schema/index.js";
+import { createDefaultBlockDOMOutputSpec } from "../defaultBlockHelpers.js";
+import { defaultProps } from "../defaultProps.js";
 
 export const headingPropSchema = {
   ...defaultProps,
@@ -16,26 +19,9 @@ const HeadingBlockContent = createStronglyTypedTiptapNode({
   name: "heading",
   content: "inline*",
   group: "blockContent",
+
   addAttributes() {
-    return {
-      level: {
-        default: 1,
-        // instead of "level" attributes, use "data-level"
-        parseHTML: (element) => {
-          const attr = element.getAttribute("data-level")!;
-          const parsed = parseInt(attr);
-          if (isFinite(parsed)) {
-            return parsed;
-          }
-          return undefined;
-        },
-        renderHTML: (attributes) => {
-          return {
-            "data-level": (attributes.level as number).toString(),
-          };
-        },
-      },
-    };
+    return propsToAttributes(headingPropSchema);
   },
 
   addInputRules() {
@@ -45,15 +31,30 @@ const HeadingBlockContent = createStronglyTypedTiptapNode({
         return new InputRule({
           find: new RegExp(`^(#{${level}})\\s$`),
           handler: ({ state, chain, range }) => {
+            const blockInfo = getBlockInfoFromSelection(state);
+            if (
+              !blockInfo.isBlockContainer ||
+              blockInfo.blockContent.node.type.spec.content !== "inline*"
+            ) {
+              return;
+            }
+
             chain()
-              .BNUpdateBlock(state.selection.from, {
-                type: "heading",
-                props: {
-                  level: level as any,
-                },
-              })
+              .command(
+                updateBlockCommand(
+                  this.options.editor,
+                  blockInfo.bnBlock.beforePos,
+                  {
+                    type: "heading",
+                    props: {
+                      level: level as any,
+                    },
+                  }
+                )
+              )
               // Removes the "#" character(s) used to set the heading.
-              .deleteRange({ from: range.from, to: range.to });
+              .deleteRange({ from: range.from, to: range.to })
+              .run();
           },
         });
       }),
@@ -62,42 +63,67 @@ const HeadingBlockContent = createStronglyTypedTiptapNode({
 
   addKeyboardShortcuts() {
     return {
-      "Mod-Alt-1": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "heading",
-          props: {
-            level: 1 as any,
-          },
-        }),
-      "Mod-Alt-2": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "heading",
-          props: {
-            level: 2 as any,
-          },
-        }),
-      "Mod-Alt-3": () =>
-        this.editor.commands.BNUpdateBlock(this.editor.state.selection.anchor, {
-          type: "heading",
-          props: {
-            level: 3 as any,
-          },
-        }),
+      "Mod-Alt-1": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        // call updateBlockCommand
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "heading",
+            props: {
+              level: 1 as any,
+            },
+          })
+        );
+      },
+      "Mod-Alt-2": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "heading",
+            props: {
+              level: 2 as any,
+            },
+          })
+        );
+      },
+      "Mod-Alt-3": () => {
+        const blockInfo = getBlockInfoFromSelection(this.editor.state);
+        if (
+          !blockInfo.isBlockContainer ||
+          blockInfo.blockContent.node.type.spec.content !== "inline*"
+        ) {
+          return true;
+        }
+
+        return this.editor.commands.command(
+          updateBlockCommand(this.options.editor, blockInfo.bnBlock.beforePos, {
+            type: "heading",
+            props: {
+              level: 3 as any,
+            },
+          })
+        );
+      },
     };
   },
   parseHTML() {
     return [
       {
         tag: "div[data-content-type=" + this.name + "]",
-        getAttrs: (element) => {
-          if (typeof element === "string") {
-            return false;
-          }
-
-          return {
-            level: element.getAttribute("data-level"),
-          };
-        },
       },
       {
         tag: "h1",
